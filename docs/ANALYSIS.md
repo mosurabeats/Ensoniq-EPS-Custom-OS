@@ -504,8 +504,27 @@ supervisor stack `0xFFC960`, the stack area `0xFFC994`, and the task table
 * The sequencer is a state machine: `0xFF8028`/`0xFF802A` hold state handler
   addresses (`0xFF58D6`, `0xFF591E`, `0xFF5942` …); LOOPED record mode
   (`0xFF815F` = 2) branches off them; `0xFF815E` = keep OLD/NEW.
-* Still to find: the task that receives keyboard notes while recording and
-  writes them into the new take (the hook point for record-time swing).
+* **Sequencer task** (task 3, entry `0xFF583A`, control block `0xFFCBC0`):
+  waits on `trap #6`, then dispatches the message type through the table
+  that the state word `0xFF8028` points to (stopped: `0xFF588E`; recording:
+  `0xFF5942`). Messages are dropped while `0x160A` = 1 and `0x160D` ≠ 0.
+  Transport buttons arrive as type `0x16` with the button (id − 0x40) at
+  `+4` and press 1 / release 2 at `+6` (sent by the panel handler
+  `0xFF9774`). In the stopped state they go to `0xFF7AA4`: RECORD (0) only
+  sets bit 7 of `0xFF815A` while held, so recording is RECORD held + PLAY,
+  as on the real EPS. MAME confirms: "SEQUENCE 01 BAR=1", state `0x5942`.
+* **Recording writes a delta-time event stream** (in MAME, at `0x580220…`
+  in the internal 512 KB). On a played note, `0xFF7388` first flushes the
+  ticks since the last event (`0xFF804A`) as time events (`0x8B90 | …`, or
+  added to the previous event's 7-bit delta when small), then the note
+  event is appended (`0xFF6E72`; `0xFF74EE` patches the stream after it).
+* Plan for record-time swing (ROADMAP #2): instead of moving each note as
+  it's written (hard in a delta stream with older passes merged in),
+  re-quantize the track with the swing grid at the end of each LOOPED
+  pass. Notes already on the grid don't move, so it's equivalent to
+  quantizing at record time. The same point replaces the KEEP prompt and
+  takes the undo snapshot. Next: decode the note event format and the
+  loop-wrap point.
 
 ### Unused and unfinished bits
 

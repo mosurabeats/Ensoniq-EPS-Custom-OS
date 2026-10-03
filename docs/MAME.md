@@ -84,7 +84,8 @@ The protocol comes from the OS's panel receive handler (`0xFF97A6`):
 | `code\|80 vel` | keyboard key down, note = code + 36 (C2), velocity `vel` (1–7F) |
 | `code vel` | keyboard key up, release velocity `vel` (must be non-zero, or it's a button release) |
 
-Button codes found so far (by pressing each and reading the display):
+Button codes (by pressing each and reading the display; button ids from
+the ROM table `0xC02032`, ids 0x40–0x43 go to the sequencer task):
 
 | Code | Button |
 |---|---|
@@ -92,6 +93,10 @@ Button codes found so far (by pressing each and reading the display):
 | 35 | ENTER (YES) |
 | 10, 11 | arrow buttons (next/previous file on the LOAD page) |
 | 2, 8, 14, 20, 4, 34, 28, 22 | instrument buttons 1–8, in that order |
+| 3 | RECORD (button id 0x40; held: hold it and press PLAY to record) |
+| 23, 29 | PLAY / STOP-CONTINUE (ids 0x43, 0x41; either starts the sequencer) |
+| 7 | SAMPLE ("PICK SAMPLE INSTRUMENT") |
+| 12, 13, 18, 19, 24, 25, 30, 31, 36, 37, 0, 1 | page/number buttons (ids 0x30–0x3B) |
 | 5 | shows FREE SYSTEM BLKS |
 | 6 | CREATE NEW INSTRUMENT |
 | 9, 21, 27 | the disk's directories / sequences / MIDI files |
@@ -179,4 +184,4 @@ and the DMAC interrupts at level 2 (vectors 65/66 → `0xFF8188` →
   stop bits set (CR `0x0003`) in MAME, probably waiting on chip behaviour
   MAME doesn't model. Voice lists in RAM are right either way, so the mute
   tests don't depend on audio.
-* The other button codes (edit pages, sequencer).
+* Which page/number button is which (ids 0x30–0x3B).
