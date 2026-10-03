@@ -93,7 +93,8 @@ loop recording takes out the last notes played; on with `--swing` and
 `--groups` (mute groups per key, fixed at build time) and `--swing` per
 instrument (`1=16:mpc:58,2=8:sp1200:63`). `tools/epstool.py groups` lists or
 presets the mute groups in an instrument file on a disk. `tools/mkdrums.sh`
-builds the drum disk with `--pages`.
+builds the drum disk with `--pages`; `tools/mkosdisk.sh` the same OS with no
+sounds on it (`EPS249_CUSTOM`).
 
 `.hfe` output keeps the stock disk's track layout and works on any Gotek
 firmware. See docs/HARDWARE_TESTS.md for what to try on the EPS.

@@ -80,10 +80,15 @@ couldn't read it from the disk (or the image failed its check) and the EPS
 fell back to stock behaviour. Tell us; that's a disk-read problem, not a
 mute-group one.
 
-## Drum disk (`EPS249_DRUMS`)
+## Boot disk (`EPS249_CUSTOM`) and drum disk (`EPS249_DRUMS`)
 
-A disk to play with: OS 2.49 with our additions, plus two kits from
-Ensoniq's factory drum disk 9. Build it with `tools/mkdrums.sh` (after
+`EPS249_CUSTOM` is the one to use: OS 2.49 with our additions and nothing
+else, so the rest of the disk (about 700 KB) is free for your own sounds.
+Build it with `tools/mkosdisk.sh`. Everything below works the same on it;
+set mute groups on your own samples on wavesample page 6.
+
+`EPS249_DRUMS` is the same OS plus two kits from Ensoniq's factory drum
+disk 9, for testing. Build it with `tools/mkdrums.sh` (after
 `tools/fetch.sh sounds`).
 
 **Load the kits:** LOAD, ENTER, instrument button 1 for TR 8O8 (file 1);
