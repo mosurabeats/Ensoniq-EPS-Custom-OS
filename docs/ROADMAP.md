@@ -147,7 +147,54 @@ them on the swung grid, and there is no KEEP OLD/NEW prompt. Pieces:
 QUANTIZE TRACK with swing (steps c–e) stays useful for fixing a track after
 the fact, and shares the math with the record-time hook.
 
-## Shared blocker: space for new code — solved by the code area
+## Ideas for later (not scheduled, not being implemented)
+
+### S900 FILTER (render command)
+
+A wavesample edit, like TRUNCATE or NORMALIZE, that bakes an Akai S900/S950
+filter into the sample.
+
+* **S900/S950 filter:** one National MF6CN-50 per voice: 6th-order
+  Butterworth low-pass, switched capacitor, cutoff = clock / 49.1, no
+  resonance, −36 dB/oct. Flat right up to the cutoff, then a hard knee.
+  Static cutoff per keygroup plus keyboard tracking.
+* **EPS playback filter:** inside the sound chip: four one-pole low-pass
+  stages (`y += K·(x − y)`, K1 on poles 1–2, K2 on 3–4; the F1/F2 LP/HP modes
+  regroup them). At most −24 dB/oct with a soft knee, no resonance. Tuned to
+  the same −3 dB point it is −0.8 dB at fc/2 (S900: 0) and −10 dB at 2·fc
+  (S900: −36). The chip can't make the S900 curve in real time.
+* **Plan:** an exact 6-pole Butterworth (three biquads) rendered into the
+  sample, with cutoff as the parameter. Filtering before transposing equals a
+  fully keyboard-tracked filter. Optional: 12-bit reduction and S900 sample
+  rates (7.5–40 kHz) for the whole S900 path. Not modelled: the analog
+  output stage, the BA9221 DAC, switched-capacitor clock noise.
+* **Where:** not real-time code, so overlay 3 (empty, loadable), not the
+  code area.
+* **Hardware curiosity:** the EPS input filter (XR-1008) is also a clocked
+  switched-capacitor filter at 50:1. If its order is close to the MF6's,
+  sampling through it at a set cutoff would be an S900-style filter in
+  hardware. The filter probe disks would show its slope.
+
+### Effects like the EPS-16+ / Waveboy
+
+* **Why the EPS-16+ can:** it has a dedicated 24-bit effects DSP (Ensoniq
+  ES5510 "ESP") in the audio path. Its effects, and Waveboy's (e.g. the
+  Parallel Effects disk), are programs for that chip, loaded as effect files
+  (the EPS-16+ OS disks carry a `PARALLEL EFX` file).
+* **Why the EPS can't run them:** no DSP chip, and the CPU isn't in the audio
+  path (voices go from the sound chip straight to the DACs). The 68000 is
+  also far too slow for real-time audio. Waveboy effects can't run on an EPS
+  in any form, and retrofitting a DSP would be a new hardware board.
+* **What is possible:**
+
+| Idea | How | Cost |
+|---|---|---|
+| Render FX | Offline edits baked into samples: reverb tail, echo/delay, chorus/flanger, drive, bit crush, S900 filter | Static (not per note); sample memory for tails; overlay 3 |
+| Note echo | Re-trigger notes with falling velocity, synced to tempo (a "MIDI delay" in the OS) | Uses voices; real-time, so the code area |
+| Unison / chorus | Extra detuned voices per note | Uses voices (the EPS has 20) |
+| External FX per instrument | The EPS output expander connector (J16 on the schematic) gives separate outputs | Hardware: an output expander |
+
+ — solved by the code area
 
 Resident RAM (`0xFF1600–0xFFDFFF`) is full. Our resident code now lives in
 the **top 1 KB of sample RAM**, reserved at boot (ANALYSIS.md → Code area;
