@@ -1,0 +1,38 @@
+# EPS249_DRUMS: load TR 8O8 (file 1) into instrument 1 and LIVE KIT (file 2)
+# into instrument 2, then play hats and kicks on each. Key up = code vel
+# (non-zero), button up = code 00.
+10.5  8f 00      # LOAD
+10.65 0f 00
+11.5  a3 00      # ENTER
+11.65 23 00
+12.5  82 00      # instrument 1 -> loads TR 8O8 (done ~27.6 s)
+12.65 02 00
+29.0  8f 00      # LOAD
+29.15 0f 00
+30.0  8a 00      # arrow (10): FILE 2 LIVE KIT
+30.15 0a 00
+31.0  a3 00      # ENTER
+31.15 23 00
+32.0  88 00      # instrument 2 (code 8) -> loads LIVE KIT (~25 s)
+32.15 08 00
+59.0  82 00      # select instrument 1 (TR 8O8)
+59.15 02 00
+60.0  87 60      # G2 (43) open hat
+60.3  8a 60      # A#2 (46) closed hat: chokes the open hat
+60.6  80 60      # C2 (36) kick
+60.9  80 60      # C2 again: cuts the first kick's tail
+61.2  82 60      # D2 (38) snare: no group
+62.0  07 40
+62.0  0a 40
+62.0  00 40
+62.0  02 40
+63.0  88 00      # select instrument 2 (LIVE KIT)
+63.15 08 00
+64.0  96 60      # A#3 (58) open hat
+64.3  92 60      # F#3 (54) closed hat: chokes it
+64.6  99 60      # C#4 (61) cymbal: no group
+64.9  94 60      # G#3 (56) pedal hat: chokes the closed hat, not the cymbal
+66.0  16 40
+66.0  12 40
+66.0  19 40
+66.0  14 40

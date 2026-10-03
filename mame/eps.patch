@@ -1,8 +1,32 @@
 diff --git a/src/mame/ensoniq/esq5505.cpp b/src/mame/ensoniq/esq5505.cpp
-index ff89250e..ae31741b 100644
+index ff89250e..04e163bd 100644
 --- a/src/mame/ensoniq/esq5505.cpp
 +++ b/src/mame/ensoniq/esq5505.cpp
-@@ -389,7 +389,10 @@ TIMER_CALLBACK_MEMBER(esq5505_state::floppy_dskchg_reset)
+@@ -248,6 +248,7 @@ public:
+ 		, m_rom(*this, "osrom")
+ 		, m_ram(*this, "osram")
+ 		, m_osram_nvram(*this, "osram")
++		, m_sampleram(*this, "sampleram")
+ 		, m_seqram_nvram(*this, "seqram")
+ 	{ }
+ 
+@@ -284,6 +285,7 @@ private:
+ 	required_region_ptr<uint16_t> m_rom;
+ 	required_shared_ptr<uint16_t> m_ram;
+ 	optional_device<nvram_device> m_osram_nvram;
++	optional_shared_ptr<uint16_t> m_sampleram;
+ 	optional_device<nvram_device> m_seqram_nvram;
+ 
+ 	void common(machine_config &config) ATTR_COLD;
+@@ -318,6 +320,7 @@ private:
+ 	static void floppy_formats(format_registration &fr);
+ 
+ 	void eps_map(address_map &map) ATTR_COLD;
++	void eps_otis_map(address_map &map) ATTR_COLD;
+ 	void sq1_map(address_map &map) ATTR_COLD;
+ 	void vfx_map(address_map &map) ATTR_COLD;
+ 	void vfxsd_map(address_map &map) ATTR_COLD;
+@@ -389,7 +392,10 @@ TIMER_CALLBACK_MEMBER(esq5505_state::floppy_dskchg_reset)
  {
  	m_floppy_dskchg = !m_floppy_is_loaded;
  	LOG("Resetting floppy_dskchg -> %s\n", m_floppy_dskchg ? "true" : "false");
@@ -14,7 +38,7 @@ index ff89250e..ae31741b 100644
  }
  
  void esq5505_state::update_floppy_inputs()
-@@ -397,6 +400,15 @@ void esq5505_state::update_floppy_inputs()
+@@ -397,6 +403,15 @@ void esq5505_state::update_floppy_inputs()
  	// update the "Disk Ready" input
  	m_duart->ip0_w(m_floppy_is_active && m_floppy_is_loaded);
  
@@ -30,7 +54,7 @@ index ff89250e..ae31741b 100644
  	// Also update the DOC IRQ in case there's a pending disk change to handle.
  	update_docirq_to_maincpu();
  }
-@@ -434,7 +446,7 @@ void esq5505_state::floppy_unload(floppy_image_device *floppy)
+@@ -434,7 +449,7 @@ void esq5505_state::floppy_unload(floppy_image_device *floppy)
  
  void esq5505_state::update_docirq_to_maincpu()
  {
@@ -39,7 +63,7 @@ index ff89250e..ae31741b 100644
  	if (floppy_dskchg_irq)
  		LOG("docirq (m68k_irq1) due to disk change = %d\n", floppy_dskchg_irq);
  	if (floppy_dskchg_irq && m_floppy_is_loaded)
-@@ -569,7 +581,11 @@ void esq5505_state::lower_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+@@ -569,7 +584,11 @@ void esq5505_state::lower_w(offs_t offset, uint16_t data, uint16_t mem_mask)
  
  	if (offset < 0x4000)
  	{
@@ -52,7 +76,30 @@ index ff89250e..ae31741b 100644
  			COMBINE_DATA(&m_ram[offset]);
  		else
  			LOG("Write to ROM: %x @ %x (fc=%x)\n", data, offset, m_maincpu->get_fc());
-@@ -687,7 +703,22 @@ void esq5505_state::duart_output(uint8_t data)
+@@ -611,11 +630,21 @@ void esq5505_state::eps_map(address_map &map)
+ 	map(0x240000, 0x2400ff).rw(m_dmac, FUNC(hd63450_device::read), FUNC(hd63450_device::write));
+ 	map(0x280000, 0x28001f).rw(m_duart, FUNC(mc68681_device::read), FUNC(mc68681_device::write)).umask16(0x00ff);
+ 	map(0x2c0000, 0x2c0007).rw(m_fdc, FUNC(wd1772_device::read), FUNC(wd1772_device::write)).umask16(0x00ff);
+-	map(0x580000, 0x7fffff).ram();         // sample RAM?
++	map(0x580000, 0x7fffff).ram().share("sampleram");   // 512K internal + expander
+ 	map(0xc00000, 0xc1ffff).rom().region("osrom", 0);
+ 	map(0xff0000, 0xffffff).ram().share("osram");
+ }
+ 
++// EPS: the ES5505 plays from sample RAM. OS 2.49 gives it word addresses
++// relative to 0x600000 (the start of the sample heap with a 4x expander:
++// a kick at CPU 0x6031C2 starts at chip address 0x18E1), 20 bits = 2 MB.
++void esq5505_state::eps_otis_map(address_map &map)
++{
++	map(0x00000, 0xfffff).lr16(NAME([this] (offs_t offset) -> u16 {
++		return m_sampleram[0x40000 + offset];   // 0x600000 - 0x580000 = 0x40000 words
++	}));
++}
++
+ void esq5505_state::sq1_map(address_map &map)
+ {
+ 	map(0x000000, 0x03ffff).rw(FUNC(esq5505_state::lower_r), FUNC(esq5505_state::lower_w));
+@@ -687,7 +716,22 @@ void esq5505_state::duart_output(uint8_t data)
  	{
  		if (m_system_type == EPS)
  		{
@@ -76,7 +123,7 @@ index ff89250e..ae31741b 100644
  		}
  		else
  		{
-@@ -850,6 +881,15 @@ void esq5505_state::eps(machine_config &config)
+@@ -850,6 +894,22 @@ void esq5505_state::eps(machine_config &config)
  	m_dmac->irq_callback().set_inputline(m_maincpu, M68K_IRQ_2);
  	m_dmac->dma8_read<0>().set(m_fdc, FUNC(wd1772_device::data_r));  // ch 0 = fdc, ch 1 = 340001 (ADC?)
  	m_dmac->dma8_write<0>().set(m_fdc, FUNC(wd1772_device::data_w));
@@ -87,6 +134,13 @@ index ff89250e..ae31741b 100644
 +	// (0xFFDBC2), and resumes the transfer in the DMAC's vector 65/66
 +	// handler (0xFFDC2A), which reads the FDC status. So FDC DRQ -> REQ0 and
 +	// FDC INTRQ -> PCL0 (active low).
++	m_otis->set_addrmap(0, &esq5505_state::eps_otis_map);
++	m_otis->set_addrmap(1, &esq5505_state::eps_otis_map);
++	// no ES5510 effects chip on the EPS: voices go straight to the outputs
++	m_otis->reset_routes();
++	for (int ch = 0; ch < 8; ch++)
++		m_otis->add_route(ch, "speaker", 1.0, ch & 1);
++
 +	m_fdc->drq_wr_callback().set(m_dmac, FUNC(hd63450_device::drq0_w));
 +	m_fdc->intrq_wr_callback().set([this] (int state) { m_dmac->pcl0_w(!state); });
  }

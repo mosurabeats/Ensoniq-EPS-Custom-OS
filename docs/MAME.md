@@ -14,6 +14,8 @@ Stock MAME doesn't boot the EPS. `mame/eps.patch` fixes it:
 | The OS stalled at its first button-light update | The keyboard/panel controller acks every byte with `0xFF`; the OS waits for it |
 | Every disk access after boot failed ("DISK NOT RESPONDING") | The FDC's DRQ and INTRQ weren't connected. The OS reads blocks by DMA: WD1772 DRQ → DMAC REQ0, INTRQ → DMAC PCL0 (see below) |
 
+| Silence | The ES5505 read an empty ROM region; the EPS's sound chip plays from sample RAM. Mapped: chip word address → CPU `0x600000` + 2 × address, outputs straight to the speakers (the EPS has no effects chip). Looped samples play; one-shot samples stay silent so far (see below) |
+
 The patch also adds two test hooks to the panel device, both off unless set:
 `ESQPANEL_LOG=1` logs the display bytes, and `ESQPANEL_KEYS=file` plays
 panel buttons and keyboard keys from a script.
@@ -80,7 +82,7 @@ The protocol comes from the OS's panel receive handler (`0xFF97A6`):
 |---|---|
 | `code\|80 00` / `code 00` | panel button `code` pressed / released |
 | `code\|80 vel` | keyboard key down, note = code + 36 (C2), velocity `vel` (1–7F) |
-| `code 00` | keyboard key up |
+| `code vel` | keyboard key up, release velocity `vel` (must be non-zero, or it's a button release) |
 
 Button codes found so far (by pressing each and reading the display):
 
@@ -88,7 +90,8 @@ Button codes found so far (by pressing each and reading the display):
 |---|---|
 | 15 | LOAD (also 26, 33 open the disk's instrument list) |
 | 35 | ENTER (YES) |
-| 2, 4, 8, 14, 20, 22, 28, 34 | the 8 instrument buttons; 2 = instrument 1 |
+| 10, 11 | arrow buttons (next/previous file on the LOAD page) |
+| 2, 8, 14, 20, 4, 34, 28, 22 | instrument buttons 1–8, in that order |
 | 5 | shows FREE SYSTEM BLKS |
 | 6 | CREATE NEW INSTRUMENT |
 | 9, 21, 27 | the disk's directories / sequences / MIDI files |
@@ -102,6 +105,17 @@ disk and plays three overlapping notes.
 `tools/epstool.py add OS.img SOUNDS.gkh 1 OUT.img` copies an instrument
 onto the OS disk, so no disk swap is needed. (Swapping disks from Lua with
 `image:load()` failed before the DMA fix and hasn't been retried.)
+
+## The drum disk test
+
+`mame/keys/drums_disk.txt` loads both kits from `EPS249_DRUMS` (TR 8O8 into
+instrument 1, LIVE KIT into instrument 2 via the arrow button) and plays
+hats and kicks on each:
+
+```sh
+VOICES_FROM=59.9 VOICES_TO=66 KEYS=mame/keys/drums_disk.txt \
+    mame/run.sh build/test/EPS249_DRUMS.img 67 mame/voices.lua
+```
 
 ## The mute group test
 
@@ -160,6 +174,9 @@ and the DMAC interrupts at level 2 (vectors 65/66 → `0xFF8188` →
 
 * MIDI in: MAME's `-midiin` plays a .mid file into the EPS's MIDI port
   (from 10 s), for sequencer and swing tests.
-* The sound itself (`-sound none`); the ES5505 is emulated, so a WAV
-  capture (`-wavwrite`) is possible later.
+* **One-shot samples are silent.** `-wavwrite out.wav` records the EPS, but
+  only looped wavesamples sound. For one-shots the OS leaves the voice's
+  stop bits set (CR `0x0003`) in MAME, probably waiting on chip behaviour
+  MAME doesn't model. Voice lists in RAM are right either way, so the mute
+  tests don't depend on audio.
 * The other button codes (edit pages, sequencer).

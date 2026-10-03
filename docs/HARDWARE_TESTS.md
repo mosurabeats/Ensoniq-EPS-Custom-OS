@@ -72,3 +72,53 @@ a 2x or 4x memory expander, or none.
 **If step 1 fails** the 68000 can't run code from sample RAM, or something
 in the boot sequence differs from the emulator. Then we know to keep code in
 OS RAM instead, and nothing else on the disk matters.
+
+## Drum disk (`EPS249_DRUMS`)
+
+A disk to play with: OS 2.49 with mute groups, plus two kits from Ensoniq's
+factory drum disk 9. Build it with `tools/mkdrums.sh` (after
+`tools/fetch.sh sounds`).
+
+**Load TR 8O8 into instrument 1 and LIVE KIT into instrument 2.** The mute
+groups belong to instrument slots, not to the kits: LOAD, ENTER, instrument
+button 1 for file 1; then LOAD, arrow to FILE 2, ENTER, instrument button 2.
+Together the kits need about 640 KB of sample memory, so without a memory
+expander load one at a time (TR 8O8 into 1, or LIVE KIT into 2).
+
+**TR 8O8** (instrument 1). Keys found by playing every key in MAME and
+analysing the samples:
+
+| Keys | Sound | Mute group |
+|---|---|---|
+| C2, C#2 | kick (808 boom, sustains while held) | 2: a new kick cuts the old one's tail |
+| D2, E2, F#2 | snare | |
+| D#2 | rim | |
+| F2 | noise loop (hat-like) | |
+| G2–A2 | open hat | 1 |
+| A#2 | closed hat | 1: chokes the open hat |
+| B2–C4, C#4–D#5 | toms / congas (tuned across the keys) | |
+| E5–A5 | clave | |
+| A#5–D#6 | clap | |
+| E6–A6 | maracas | |
+| A#6–C7 | cowbell | |
+
+**LIVE KIT** (instrument 2). General MIDI drum order, an octave up:
+
+| Keys | Sound | Mute group |
+|---|---|---|
+| C2 | kick | |
+| C#2 | side stick | |
+| D2, E2 | snares | |
+| D#2 | crash | |
+| F2–A#2, B2–F3 | toms | |
+| F#3 | closed hat | 3 |
+| G#3 | pedal hat | 3 |
+| A#3 | open hat | 3: closed and pedal hat choke it |
+| C#4, D#4 | cymbals | |
+
+(The sound names are educated guesses from length, brightness and noise;
+tell us if a key is something else.)
+
+**Try:** hold or let ring the open hat, then hit the closed hat: the open hat
+stops. Roll the 808 kick on C2: each hit cuts the last one's boom. In MAME
+both kits behave like this (`mame/keys/drums_disk.txt`).
