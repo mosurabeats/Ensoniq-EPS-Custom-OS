@@ -418,6 +418,37 @@ Descriptors at ROM `0xC028DC`: display handler, RAM variable, message, word:
 | `0xFF0210` | (`0x19FC`, pre-trigger) | |
 | `0xFF0211` | INPUT LEVEL (`0x1B6C`) | ROM `0x3AAE`: MIC / LINE |
 
+### Unused and unfinished bits
+
+Signs of features that were started or planned but aren't in OS 2.49:
+
+* **Overlay 3 is empty** in every original-EPS OS (2.2, 2.45, 2.49). The
+  loader and the command dispatcher already handle it. The EPS-16+ OS fills
+  it from 1.19 on. We can use it for new non-real-time commands.
+* **Command dispatcher** (`0xFF5370`): walks the 14-byte records, matches
+  the flags' low byte (command number), and loads overlay
+  `(flags_high & 0x7F) >> 4` before calling the handler (`0xFFC3C4` = wanted,
+  `0xFFC8D0` = current). Flags `0xB…` would select overlay 3.
+* **Unreferenced ROM messages** (26 of 683; no OS or ROM word points at them,
+  though fixed-width label tables like `'PEDDWN '`/`'PRESSR '` are read by
+  index and only look unused):
+  * An input-calibration wizard: a meter `-XX -XX 00 +XX +XX GO?`, "TURN
+    LEFT/RIGHT CONTINUE?" (turn a trim pot), "CANNOT CALIBRATE", "INCORRECT
+    AUDIO INPUT" and a success message **"YOU'RE A COOL DUDE NOW"** that
+    nothing displays. The OS only has the manual service commands MSB
+    ADJUSTMENT and DC OFFSET ADJUSTMENT. The guided version looks cut or
+    simplified.
+  * **"SCSI STATUS"**: a command title right after FORMAT SCSI DRIVE, with no
+    command record.
+  * **"BAR RANGE ERROR"**, **"SOURCE BAR ERROR"**: sequencer errors for bar-range
+    edits; no such check uses them.
+  * "COUNTING", "NO WAVESMPLS IN LAYER", "SLAVE", "KEYSCALE", "FREQUENCY"
+    and a few labels.
+* **Envelope modes** are NORMAL / CYCLE / REPEAT: no one-shot.
+* A parameter scan against the ROM descriptors was inconclusive: most
+  instrument/layer/wavesample parameters store structure offsets, not RAM
+  addresses, so it needs the parameter system decoded first.
+
 ### Open questions
 
 1. ~~**Display text format.**~~ Solved: messages live in the boot ROM (see

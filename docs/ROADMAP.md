@@ -147,6 +147,29 @@ them on the swung grid, and there is no KEEP OLD/NEW prompt. Pieces:
 QUANTIZE TRACK with swing (steps c–e) stays useful for fixing a track after
 the fact, and shares the math with the record-time hook.
 
+## Boom-bap plan (proposed order, to confirm)
+
+Goal: make the EPS feel like an MPC60/SP-1200 for sampling breaks, chopping,
+and loop-recording drums. What the stock OS already has: count-in (SEQ
+COUNTOFF), click, LOOPED record mode, threshold sampling, 20 voices, 8
+instruments with per-key wavesamples.
+
+| # | Feature | Why | Size / where |
+|---|---|---|---|
+| 1 | Mute groups | hats, mono chops | done in emulator; test 1 |
+| 2 | MPC-style loop recording: record-time timing correct + MPC60/3000/SP-1200 swing, no KEEP prompt | the core feel | code area; in progress |
+| 3 | **Full level** per instrument (fixed velocity 127, like the MPC) | consistent drums from the keyboard | tiny hook in note-on |
+| 4 | **One-shot** per instrument (key-up ignored, sample plays through) | drums and chops always finish | small hook in note-off |
+| 5 | **Note repeat** while recording (held key repeats at the grid, swung) | hi-hat rolls | code area, sequencer clock |
+| 6 | **Erase while loop recording** (hold a button + key: that key's notes are erased as the loop passes) | fix takes without stopping | code area |
+| 7 | **CHOP**: cut a break into N slices (equal, tempo grid, or at transients) and map them to consecutive keys | SP-1200/MPC chopping in one step | overlay 3 (new command) |
+| 8 | Sampling crunch: try stock FILTER CUTOFF 20.0 KHZ at low rates first, then filter OUT if needed | SP-1200 grit | overlay 2, tiny |
+| 9 | Per-track swing amount | MPC3000-style groove per part | after 2 |
+| 10 | Ideas for later below: S900 filter, render effects (last) | tone | overlay 3 |
+
+The code area is 1 KB (120 bytes used). If 2–6 outgrow it, the reserve can
+grow (a constant in `src/codearea.s`) at the cost of sample memory.
+
 ## Ideas for later (not scheduled, not being implemented)
 
 ### S900 FILTER (render command)
@@ -194,7 +217,26 @@ filter into the sample.
 | Unison / chorus | Extra detuned voices per note | Uses voices (the EPS has 20) |
 | External FX per instrument | The EPS output expander connector (J16 on the schematic) gives separate outputs | Hardware: an output expander |
 
- — solved by the code area
+### Render effects (LAST on the list)
+
+Offline effects baked into a wavesample, as new sample edit commands next to
+TRUNCATE, NORMALIZE, REVERSE. The EPS has no effects chip, so this is how it
+gets EPS-16+-style processing (by resampling, not live). Lowest priority:
+after everything else on this roadmap.
+
+| Phase | Effects | Notes |
+|---|---|---|
+| R1 | Framework: one command page, source range, dry/wet, output to a new wavesample (keep the original) | Shared code for all effects; overlay 3 (non-real-time) |
+| R2 | S900 FILTER (above), bit depth reduction (12/8-bit), sample-rate crunch | Character tools for drums |
+| R3 | Drive / saturation, tape-style soft clip | Cheap per sample |
+| R4 | Echo / delay (tempo-synced, feedback), chorus / flanger | Needs tail length (sample memory) |
+| R5 | Reverb tail (small FDN / Schroeder) | Most CPU per second of audio; slow but fine offline |
+
+The 68000 runs these at a few seconds per sample, which is fine for an edit
+command. Each effect gets an emulator test against a Python reference, like
+`tools/swing.py`.
+
+## Shared blocker: space for new code — solved by the code area
 
 Resident RAM (`0xFF1600–0xFFDFFF`) is full. Our resident code now lives in
 the **top 1 KB of sample RAM**, reserved at boot (ANALYSIS.md → Code area;
