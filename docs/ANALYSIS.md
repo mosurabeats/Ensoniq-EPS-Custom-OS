@@ -42,18 +42,37 @@ unit.** Power off, insert a stock OS disk, and you're back.
 | `0xC00000–0xC0FFFF` | Boot ROM. The OS calls into it about 290 times with `jsr abs.l` |
 | `0xFF0000–0xFFFFFF` | OS RAM |
 
-### OS layout: resident part + 8 KB overlays
+### OS layout: what the boot ROM loads where
 
-| File offset | Loaded at | What |
-|---|---|---|
-| `0x00000–0x0BFFF` | `0xFF2000–0xFFDFFF` | Resident OS. Header pointer table at file 0x146 |
-| (none) | `0xFF0000–0xFF1FFF` | OS variables, also reachable as `0x0000–0x1FFF` (abs.w) |
-| (none) | `0xFFDF80–0xFFDFFF` | Stack (zeroed in the image), top at `0xFFE000` |
-| `0x0C000` | `0xFFE000–0xFFFFFF` | Overlay 0 (in RAM at boot) |
-| `0x0E000` | `0xFFE000` window | Overlay 1 |
-| `0x10000` | `0xFFE000` window | Overlay 2 (disk utilities: COPY FLOPPY, BACKUP, SCSI…) |
-| `0x12000` | `0xFFE000` window | **Overlay 3: empty (all `6D B6`), free for our code** |
-| `0x14000` | `0xFFE000` window (at boot) | **Boot/init code** (3.4 KB, ~4.5 KB of the 8 KB slot unused): runs the init routines, ROM version check, sample-buffer setup |
+The boot ROM (`0xC0C046`, after checking the OS version against
+`0xC00134`) reads disk blocks into OS RAM. The OS file starts at block 15:
+
+| Disk blocks | File offset | Loaded at | What |
+|---|---|---|---|
+| 15 | `0x00000–0x001FF` | `0xFF0000` | Exception vectors |
+| 16–126 | `0x00200–0x0DFFF` | `0xFF2200–0xFFFFFF` | Resident OS, plus overlay 0 in the window |
+| 175–180 | `0x14000–0x14BFF` | `0xFF1600–0xFF21FF` | Early variables (mostly zero), the **OS entry at `0xFF171E`** and low resident code, including `0xFF2000–0xFF21FF` |
+| 181 | `0x14C00–0x14DFF` | `0xFF0732` | Disk/OS info block (the ROM also copies `0x732–0x758` to `0x200`) |
+| 127–174 | `0x0E000–0x13FFF` | not at boot | Overlays 1, 2, 3 (3 is empty, all `6D B6`) |
+
+| RAM | What |
+|---|---|
+| `0xFF0000–0xFF15FF` | Vectors, OS variables, voice records (`0xFF0940`) |
+| `0xFF1600–0xFFDFFF` | Resident OS (entry `0xFF171E`); also reachable as `0x1600–0x7FFF` (abs.w) |
+| `0xFFDF80–0xFFDFFF` | Stack, top at `0xFFE000` |
+| `0xFFE000–0xFFFFFF` | Overlay window (overlay 0 at boot) |
+
+The OS's overlay loader (`0xFF4E40`, D1 = overlay n) reads 16 blocks from
+disk block 16·(n+7)−1 into the window, by absolute block number.
+
+(Earlier notes called file `0x14000` a "boot overlay" run from the window.
+That was wrong. The ROM loads it to `0xFF1600`: with that base, 54 of the 75
+absolute calls into it land on routine entries, against 12 of 261 at
+`0xFFE000`, and the OS calls into it all the time, e.g. `0xFF1E54`.)
+
+`tools/epstool.py` (`LOAD_MAP`) maps addresses to file offsets this way.
+`tools/disasm.sh OS.bin` disassembles the resident part, `… low` the
+`0xFF1600` chunk, and `… N` overlay N.
 
 Evidence:
 * Short-absolute calls into `0x2000–0xBFFF` land right after an `rts` far
@@ -63,7 +82,7 @@ Evidence:
   sense if *that chunk* is what's in the window: 27/56, 41/75 and 23/35 hits,
   against 3/75 and 5/35 if the file were contiguous.
 * The overlay loader at `0xFF4E40` (D1 = overlay number) reads from the
-  **OS disk** into `0xFFE000`, retries with an "insert disk" prompt, and
+  **OS disk** (disk block 16·(n+7)−1, 16 blocks) into `0xFFE000`, retries with an "insert disk" prompt, and
   records the current overlay in `0xFFC8D0`. Callers pass 0, 2, or a stored
   number.
 * Stack switches load `#0xE000` as SP (`0xFF85CE`, `0xFF8610`).
@@ -117,11 +136,59 @@ leaves the bounds in two longs that the OS **only reads**:
 
 So patches must never hard-code sample addresses. They must read the
 bounds, and then they work the same on a stock, 2x or 4x EPS.
+(How the bounds are set, and how our code area takes 1 KB off the top: see
+"Boot and the sample memory" below.)
 
-The first 512 bytes of the OS file (`0xFF2000–0xFF21FF`) don't match what is
-in RAM at run time. Code branches into this block (`bsr 0xFF21AC`) where the
-file holds data, and calls `jsr 0x2080` into an all-zero area. The boot ROM
-probably fills it with vectors and trampolines, so it is **not** free space.
+RAM `0xFF2000–0xFF21FF` is loaded from file `0x14A00`, not from file
+`0x0000` (which holds the vectors and goes to `0xFF0000`). That's why the
+OS's `jsr 0x2080` looked like a call into data in earlier notes.
+
+### Boot and the sample memory
+
+The OS entry `0xFF171E` first calls `0xFF832E`, a trampoline
+(`jmp 0xC08490`) to the ROM's sample-memory setup, then the other init
+routines, then the main loop (`0xFF1774`, `trap #6` waits for events).
+`0xFF832E` has no other caller.
+
+ROM `0xC08490` → `0xC0854C` sizes sample RAM with a write/read test:
+
+| Fitted | Start (`0xFF1656`) | Size | Heap end (`0xFF165A`) | Physical top |
+|---|---|---|---|---|
+| Base EPS | `0x580000` | 512 KB | `0x5FFE00` | `0x600000` |
+| 2x expander | `0x580000` | 1 MB | `0x67FE00` | `0x680000` |
+| 4x expander | `0x600000` | 2 MB | `0x7FFE00` | `0x800000` |
+
+Then `0xC084AC` sets the heap `[start, start + size − 512)` (size in
+`0xFF166A`, also `0xFF165E/62`), writes the heap header at `start`, and saves
+copies (`0xFF1666…0xFF1676`) that `0xFF833A` (`0xC08500`, used at `0xFFA112`,
+`0xFFA176` and overlay 2) restores later. The 512 bytes above the heap are
+the system block (`0xFF86EE` builds it from the ROM template `0xC02000`).
+With a 4x expander the internal 512 KB at `0x580000` is outside the heap,
+and overlay 0 uses it for sequencer memory (`0xFFE0EE`). The OS reads
+`0xFF1672` as an available-size figure (minimums 656, 224), never as a fixed
+total.
+
+### Code area (our code in sample RAM)
+
+`src/codearea.s` takes the top 1 KB of physical sample RAM for our resident
+code (`tools/mkcodearea.py` builds it):
+
+1. The patch points `0xFF832E` at an installer staged in a zero run of the
+   OS file (`0xFFC994`, runtime buffers). Since the OS entry calls it first,
+   nothing else in the OS has run yet.
+2. The installer runs `0xC08490`, subtracts 1 KB from `0xFF166A` and re-runs
+   `0xC084AC`. The heap, its header and the saved copies all shrink by 1 KB
+   the ROM's own way, and the system block moves 1 KB down.
+3. It copies the payload to the top 1 KB (`0x5FFC00` / `0x67FC00` /
+   `0x7FFC00`), restores the trampoline, and writes `jsr` into each hook site
+   whose stock bytes match (skipping any that don't).
+4. It jumps to the copy, which zeroes the staging bytes and returns to the
+   OS entry with the ROM's registers. After that, OS RAM matches a stock boot
+   except for the bounds (1 KB less) and the hook sites.
+
+The emulator test (`tests/test_codearea.py`) checks this for all three memory
+configs and both boot ROMs. Not yet checked on hardware: that the 68000 runs
+code from sample RAM (first hardware test).
 
 ### Sampling (overlay 2)
 
@@ -330,9 +397,7 @@ the boot ROM for supervisor accesses and to OS RAM (`0xFF0000+`) otherwise.
 So every short absolute address in the OS is OS RAM: `jsr $23FC` is
 `0xFF23FC` (`moveq #102,d2; trap #10`, a display call into the ROM), and
 `0x7F88` is `0xFF7F88` (CALIBRATE KEYBOARD). The OS reaches the ROM through
-`TRAP`s and `jmp $C0xxxx`. This also explains the "first 512 bytes" puzzle
-above: the boot ROM writes that block, and code reaches it through the
-mirror.
+`TRAP`s and `jmp $C0xxxx`.
 
 For handlers in the overlay window, **flags bits 15–12 = 8 + overlay
 number**: `0x8…` = overlay 0 (sequencer commands, e.g. QUANTIZE TRACK at
@@ -360,10 +425,10 @@ Descriptors at ROM `0xC028DC`: display handler, RAM variable, message, word:
    still needs a way to print our own strings.
 2. **Free resident space** for real-time hooks. None found yet (see
    ROADMAP.md).
-3. **How overlay numbers map to disk blocks.** The loader computes
-   `d3 = n + 7` before the read, so the unit isn't confirmed yet. We need to
-   confirm the OS will load overlay 3 when asked.
-4. **How the boot code at file 0x14000 gets into the window**, and whether the loader always reads a full 8 KB (needed before appending code to it).
+3. ~~**How overlay numbers map to disk blocks.**~~ Disk block 16·(n+7)−1,
+   16 blocks (see OS layout). Overlay 3's slot is empty and loadable.
+4. ~~**Boot code at file 0x14000.**~~ Not a boot overlay: it's loaded to
+   `0xFF1600` and holds the OS entry (see OS layout).
 5. **Boot ROM code.** We have the ROM now (2.00 and 2.40). Still to map:
    the TRAP handlers, the display routine behind `jsr $23FC`, the command
    dispatcher (flags → overlay) and how the low-RAM handler addresses

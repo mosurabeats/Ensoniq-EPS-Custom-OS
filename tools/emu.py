@@ -11,9 +11,16 @@ Memory:
                      MAME's lower_r maps this range to OS RAM)
   0x200000           DOC II, 0x240000 DMAC, 0x280000 DUART, 0x2C0000 FDC:
                      plain RAM so register writes don't fault
-  0x580000-0x67FFFF  sample RAM (1 MB)
+  0x580000-0x7FFFFF  sample RAM per expander: base 0x580000-0x5FFFFF,
+                     2x to 0x67FFFF, 4x adds 0x600000-0x7FFFFF. Missing
+                     memory reads as open bus (0xFFFF), writes vanish, so the
+                     ROM's RAM test sizes it like the real thing.
   0xC00000-0xC0FFFF  boot ROM
-  0xFF0000-0xFFFFFF  OS RAM; resident OS at 0xFF2000, overlay at 0xFFE000
+  0xFF0000-0xFFFFFF  OS RAM, loaded like the boot ROM does it (load_os):
+                     file 0x0000-0x01FF -> 0xFF0000, 0x0200-0xDFFF ->
+                     0xFF2200-0xFFFFFF (overlay 0 in the window),
+                     0x14000-0x14BFF -> 0xFF1600 (OS entry code + early
+                     variables, also 0xFF2000-0xFF21FF), 0x14C00 -> 0xFF0732
                      (also at 0xFFFF0000: Unicorn has a 32-bit bus, the 68000
                      only 24 lines)
 
@@ -49,6 +56,11 @@ REGS = {
 RAM_BASE = 0xFF0000
 ROM_BASE = 0xC00000
 SAMPLE_BASE = 0x580000
+EXPANDERS = {               # sample RAM present for each memory config
+    "base": [(0x580000, 0x80000)],
+    "2x": [(0x580000, 0x100000)],
+    "4x": [(0x580000, 0x280000)],
+}
 STOP = 0x100000          # return address that ends a call()
 STACK_TOP = 0xFFDF7C     # just under the OS stack area (0xFFDF80-0xFFDFFF)
 
@@ -58,7 +70,7 @@ class EmuError(Exception):
 
 
 class EPS:
-    def __init__(self, rom_path, os_path, overlay=None):
+    def __init__(self, rom_path, os_path, overlay=None, expander="2x"):
         self.uc = uc = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
         uc.ctl_set_cpu_model(UC_CPU_M68K_M68000)
         # One host buffer for OS RAM, mapped twice (0xFF0000 and the mirror at 0).
@@ -71,12 +83,21 @@ class EPS:
         uc.mem_map(ROM_BASE, 0x20000, 5)
         for io in (0x200000, 0x240000, 0x280000, 0x2C0000, 0x300000):
             uc.mem_map(io, 0x1000, 3)
-        uc.mem_map(SAMPLE_BASE, 0x100000, 7)
+        present = EXPANDERS[expander]
+        for base, size in present:
+            uc.mem_map(base, size, 7)
+        end = SAMPLE_BASE
+        for base, size in present:
+            end = max(end, base + size)
+        if end < 0x800000:   # open bus up to the top of the expansion space
+            uc.mmio_map(end, 0x800000 - end, lambda *a: 0xFFFF, None, lambda *a: None, None)
         uc.mem_map(STOP, 0x1000, 7)
 
-        self.os = bytearray(open(os_path, "rb").read())
-        uc.mem_write(ROM_BASE, open(rom_path, "rb").read())
-        uc.mem_write(epstool.OS_LOAD_ADDR, bytes(self.os[:epstool.OVERLAY_FILE_BASE]))
+        with open(os_path, "rb") as f:
+            self.os = bytearray(f.read())
+        with open(rom_path, "rb") as f:
+            uc.mem_write(ROM_BASE, f.read())
+        self.load_os()
         if overlay is not None:
             self.load_overlay(overlay)
         self._stubs = {}
@@ -86,6 +107,17 @@ class EPS:
         uc.hook_add(UC_HOOK_INTR, self._on_intr)
 
     # ------------------------------------------------------------ memory
+    def load_os(self):
+        """Fill OS RAM from the OS file the way the boot ROM does (0xC0C046:
+        disk blocks 15, 16-62, 63-126, 175-180, 181), then the ROM's copy of
+        0x732-0x758 to 0x200 (0xC0FA3E)."""
+        f = self.os
+        self.write(0xFF0000, f[0x0000:0x0200])
+        self.write(0xFF2200, f[0x0200:0xE000])
+        self.write(0xFF1600, f[0x14000:0x14C00])
+        self.write(0xFF0732, f[0x14C00:0x14E00])
+        self.write(0xFF0200, self.read(0xFF0732, 0x27))
+
     def load_overlay(self, n):
         off = epstool.OVERLAY_FILE_BASE + n * epstool.OVERLAY_SIZE
         self.write(epstool.OVERLAY_WINDOW, bytes(self.os[off:off + epstool.OVERLAY_SIZE]))

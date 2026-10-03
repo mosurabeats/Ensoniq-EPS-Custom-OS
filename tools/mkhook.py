@@ -30,7 +30,8 @@ def assemble(src, org, entry):
     """Assemble src linked at org. Returns (code bytearray, {symbol: address})."""
     with tempfile.TemporaryDirectory() as t:
         obj, elf, binf = (os.path.join(t, n) for n in ("h.o", "h.elf", "h.bin"))
-        run("m68k-linux-gnu-as", "-m68000", "--register-prefix-optional", "-o", obj, src)
+        run("m68k-linux-gnu-as", "-m68000", "--register-prefix-optional",
+            "-I", os.path.dirname(os.path.abspath(src)), "-o", obj, src)
         run("m68k-linux-gnu-ld", "-e", entry, f"-Ttext={org:#x}", "-o", elf, obj)
         run("m68k-linux-gnu-objcopy", "-O", "binary", elf, binf)
         syms = {}
@@ -38,7 +39,8 @@ def assemble(src, org, entry):
                                    text=True, check=True).stdout.splitlines():
             v, _, name = line.split()
             syms[name] = int(v, 16)
-        return bytearray(open(binf, "rb").read()), syms
+        with open(binf, "rb") as f:
+            return bytearray(f.read()), syms
 
 
 def hook_jsr(target, length):

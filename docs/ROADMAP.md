@@ -33,7 +33,7 @@ not yet placed in memory or tried on hardware:
 
 | Step | What | Status |
 |---|---|---|
-| v1 | Groups set at build time: `mkhook.py --set mute_table=0101…` | emulator-tested; needs a code location |
+| v1 | Groups set at build time: `mkcodearea.py --groups 1,1,2,0,0,0,0,0` | emulator-tested in the code area; **hardware test 1** |
 | v2 | Edit the group on the instrument page from the front panel | needs the display/parameter system decoded |
 | v3 | Save the group with the instrument file (spare header byte) | needs the instrument format mapped |
 
@@ -147,26 +147,28 @@ them on the swung grid, and there is no KEEP OLD/NEW prompt. Pieces:
 QUANTIZE TRACK with swing (steps c–e) stays useful for fixing a track after
 the fact, and shares the math with the record-time hook.
 
-## Shared blocker: space for new code
+## Shared blocker: space for new code — solved by the code area
 
-Resident RAM (`0xFF2000–0xFFDFFF`) is packed. What we measured:
+Resident RAM (`0xFF1600–0xFFDFFF`) is full. Our resident code now lives in
+the **top 1 KB of sample RAM**, reserved at boot (ANALYSIS.md → Code area;
+`src/codearea.s`, `tools/mkcodearea.py`). The payload is position
+independent; the installer writes the hook jumps for whichever expander is
+fitted. Cost: 1 KB of sample memory. Mute groups use 120 bytes of it so far.
 
-| Approach | Yield | Cost / risk | Status |
-|---|---|---|---|
-| **Dead code** (nothing calls it) | ~150 bytes in 7 pieces of 16–30 bytes. Not usable | none | measured; ruled out |
-| **Move boot-only code into the boot overlay.** File chunk 0x14000 is the init code; it runs once from the overlay window and has ~4.5 KB unused behind it. A resident routine used only at boot can move there and leave its resident space free. | `0xFF448C–0xFF44CB` = **64 contiguous bytes**, confirmed (only the init code calls it). More is likely from routines reached only through other boot-only routines. | No features lost. Two call sites in the init code are repointed; one `beq.w` needs re-encoding | best first step |
-| **Move non-real-time resident routines into overlay 3** (menu commands, edit-page handlers), leaving a ~24-byte stub: "load overlay 3, call, reload previous overlay" | KBs | That command gains a short disk read when used (the EPS already does this for its own overlays). Only safe for routines never called while overlay code is running | commands mapped (docs/COMMANDS.md); need the dispatcher |
-| **Remove features you don't use**: replace a resident command handler with "not available" and reuse its bytes | size of the feature | You lose that feature. SCSI is mostly in the boot ROM, so removing it frees little | your call; commands are named in docs/COMMANDS.md |
-| **Optimise (rewrite routines smaller)**: re-implement a routine in fewer bytes, in place, and use the freed tail | 10–30% of each rewritten routine | Highest risk: every rewrite must behave identically. Don't touch real-time code (voices, MIDI, sequencer clock) | last resort |
-| **Reserve sample RAM** (~1 KB, at boot from the init code) | as much as needed | Must confirm that the 68000 can execute from sample RAM. Costs 1 KB of sample memory (unnoticeable with your 2x expander) | needs a hardware test |
+| Status | |
+|---|---|
+| Emulator | passes for base / 2x / 4x and boot ROM 2.00 / 2.40; OS RAM after boot matches stock except the bounds and hook sites |
+| Hardware | **test 1 pending**: does the 68000 run code from sample RAM? (docs/HARDWARE_TESTS.md) |
 
-**Plan:** relocate boot-only code first (safe, no feature loss), then move
-non-real-time command code into overlay 3. Removing features is a fallback,
-and only for features you say you don't use.
+Other options measured earlier, kept for reference:
 
-**Fitting the mute groups:** the hook is 108 bytes now and can be tightened
-to ~90 (save only the registers it uses). Then it fits in the 64-byte boot
-cave plus one more small cave, or entirely in the next relocated routine.
+| Approach | Result |
+|---|---|
+| Dead code | ~150 bytes in 7 pieces of 16–30 bytes. Not usable |
+| Move boot-only code into the "boot overlay" | Invalid: there is no boot overlay (file `0x14000` is resident code at `0xFF1600`) |
+| Move non-real-time routines into overlay 3 | Still possible for big non-real-time features (overlay 3's slot is empty and loadable); command records give each command's overlay |
+| Remove features you don't use | Fallback only |
+| Rewrite routines smaller | Last resort |
 
 ### UI descriptors and message numbers
 
@@ -195,8 +197,8 @@ expanded unit.
 | M0 | Installer unpacked, EDE ⇄ IMG, OS extract/replace, patch tool, disassembly | **done** |
 | M1 | Memory layout: resident part, overlays, stack, voice engine | **done** (see ANALYSIS.md) |
 | M2 | MIDI-out debug patch on hardware: dump sample bounds and memory size from an expanded EPS | next |
-| M2b | Code location for resident hooks (sample RAM reservation or a freed routine) | |
-| M3 | Mute groups v1 (groups set at build time) on hardware | emulator-tested; needs a code location |
+| M2b | Code location for resident hooks | code area in sample RAM; emulator-tested, hardware test 1 |
+| M3 | Mute groups v1 (groups set at build time) on hardware | test disk ready (hardware test 1) |
 | M4 | Display/parameter system decoded; mute group editable from the panel | messages + commands decoded from the boot ROM |
 | M5 | Filter probe on hardware → filter OUT | try stock 20.0 KHZ first; 16 probe disks ready |
 | M6 | MPC/SP-1200 swing in QUANTIZE TRACK | reference math done; quantize loop being decoded |

@@ -58,6 +58,19 @@ python3 -m unittest discover tests     # needs build/ OS + boot ROM
 `tools/emu.py` runs OS routines and our hooks in a 68000 emulator. See
 docs/ANALYSIS.md → Emulator tests.
 
+## Code area and test disks
+
+Our resident code runs from the top 1 KB of sample RAM, installed at boot
+(docs/ANALYSIS.md → Code area). Build a test disk with mute groups:
+
+```sh
+python3 tools/mkcodearea.py build/eps_os_249.bin -o build/test/codearea_mute.json \
+    --groups 1,1,2,0,0,0,0,0 --disk build/hfe/EPS249OS.hfe build/test/EPS249_MUTETEST.hfe
+```
+
+`.hfe` output keeps the stock disk's track layout and works on any Gotek
+firmware. See docs/HARDWARE_TESTS.md for what to try on the EPS.
+
 ## Building a hook
 
 ```sh
@@ -67,7 +80,7 @@ python3 tools/mkhook.py src/mutegroup.s build/eps_os_249.bin \
     --set mute_table=0101000000000000 -o patches/mutegroup.json
 ```
 
-The code-cave address is still open. See docs/ROADMAP.md.
+Hooks that must stay resident go into the code area instead (see above).
 
 ## Filter probe disks
 
