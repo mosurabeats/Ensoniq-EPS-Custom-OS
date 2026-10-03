@@ -96,11 +96,15 @@ the ROM table `0xC02032`, ids 0x40–0x43 go to the sequencer task):
 | 3 | RECORD (button id 0x40; held: hold it and press PLAY to record) |
 | 23, 29 | PLAY / STOP-CONTINUE (ids 0x43, 0x41; either starts the sequencer) |
 | 7 | SAMPLE ("PICK SAMPLE INSTRUMENT") |
-| 12, 13, 18, 19, 24, 25, 30, 31, 36, 37, 0, 1 | page/number buttons (ids 0x30–0x3B) |
-| 5 | shows FREE SYSTEM BLKS |
-| 6 | CREATE NEW INSTRUMENT |
-| 9, 21, 27 | the disk's directories / sequences / MIDI files |
-| 16, 17 | VOLUME |
+| 12, 13, 18, 19, 24, 25, 30, 31, 36, 37, 0, 1 | number buttons (ids 0x30–0x3B); in EDIT they pick page 0, 1, 2 … (WAVESAMPLE pages: 0x32–0x38, e.g. code 30 = page 6: WS VOLUME …) |
+| 5 | EDIT (first shows the edit selection: instrument, LYR=, WS=) |
+| 6 | COMMAND |
+| 26 | INSTRUMENT page (LOAD: the disk's instruments) |
+| 21 | SEQ/SONG page (LOAD: sequences; COMMAND: CREATE NEW SEQUENCE) |
+| 9 | SYSTEM/MIDI page (LOAD: directories; COMMAND: LOAD MIRAGE-DSK SOUND) |
+| 27 | LOAD: MIDI files |
+| 16, 17 | previous / next parameter on an edit page |
+| 10, 11 | in EDIT: value up / down |
 
 To load an instrument: LOAD, ENTER ("PICK INSTRUMENT BUTTON"), an
 instrument button. Press that instrument button again afterwards to play it

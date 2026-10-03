@@ -465,6 +465,53 @@ Descriptors at ROM `0xC028DC`: display handler, RAM variable, message, word:
 | `0xFF0210` | (`0x19FC`, pre-trigger) | |
 | `0xFF0211` | INPUT LEVEL (`0x1B6C`) | ROM `0x3AAE`: MIC / LINE |
 
+### Edit pages (parameters)
+
+`tools/params.py ROM OS` dumps every edit page with its parameters.
+
+* **Page records** in OS RAM (pointer list at `0xFFC14C`, current page in
+  `0xFFC08A`): first, last and current index entry (words), page number,
+  and the end of the search-by-number range (`+8`, `0xFF2FEC`). EDIT pages:
+  `0xFFC0CA` track (SEQ ST, MIX, PAN), `0xFFC11A/124/12E` envelopes 1–3,
+  `0xFFC138` wavesample pitch (ROOT KEY …), `0xFFC106` filter,
+  `0xFFC110` wavesample amp (WS VOLUME, PAN, fades, VOLUME MOD),
+  `0xFFC142` LFO, `0xFFC0F2` wavesample (MODE, SMPL START … RANGE),
+  `0xFFC0E8` layer, `0xFFC0DE` instrument, `0xFFC0B6` sequencer (TEMPO,
+  CLICK, SEQ COUNTOFF, RECORD MODE), `0xFFC0A2` MIDI, `0xFFC0AC` system,
+  `0xFFC0D4` the edit selection (instrument, LYR, WS).
+* An **index entry** is a word pointing at an 8-byte **descriptor**: flags
+  (bits 4–0 parameter number; bit 7 and 6: shown on one line with the
+  next/previous one), type (handler table `0xFFD066`: 0 number 0–max,
+  2 0–127, 3 signed, 0x0E choice from a label table at w2 …), w2 (max or a
+  table), where the value is (an offset in the wavesample / layer /
+  instrument record, or an OS RAM address), label (a ROM message number).
+  Index tables and descriptors are in the boot ROM (`0xC02226…0xC027F8`).
+* Words below `0x8000` are ROM offsets, from `0x8000` OS RAM (`0xFF2CA4`,
+  ROM `0xC0821A`); labels likewise (ROM `0xC081EC`), and a long label
+  pointer from `0x8000` up is used as it is. But the OS also keeps resolved
+  index entry addresses as words (`move.w a3,a5@(4)`, `cmpa.w a5@(2),a3`),
+  so index tables can only be in ROM or OS RAM.
+* Value storage: `0xFF2DC6…0xFF2EB0`: instrument data (`a4`), layer offset
+  (`0xFF83A0`, `d5`), wavesample offset (`0xFF83A6`, `d6`); the envelopes
+  are at +0x26, +0x52, +0x7E in the wavesample record. With WS=ALL an edit
+  goes to every wavesample of the layer.
+* **Wavesample record** (in the instrument data, `0x120` bytes, then the
+  sample data): one parameter per word, value in the high byte; name at
+  +0x0C; envelopes; +0xAA ROOT KEY … +0x11C MOD. Byte +0x11E is 0 in all
+  78 factory wavesamples we have and nothing in the OS reads it: our mute
+  group. The instrument data in memory is the file as on disk (checked
+  byte for byte), so it saves with the instrument.
+* **Panel**: in EDIT, the number buttons pick the page; codes 16/17
+  (ids 0x22/0x24) step to the previous/next parameter (wrapping), the
+  arrows (codes 10/11) change the value. docs/MAME.md has the codes.
+* **Our parameters** (`src/pages.s`, `mkcodearea.py --pages`): the ROM index
+  tables are packed, so raising a page's "last" takes in the next table's
+  first entry; hooks at `0xFF2CA6`, `0xFF3214`, `0xFF32F6` return our
+  descriptor for that slot when it's reached through that page's record,
+  and `0xFF3308` shows our label text from the code area (label words
+  `0x7000` + offset). MAME: MUTE GROUP shows after VOLUME MOD on
+  wavesample page 6 and the arrows set byte +0x11E of the wavesamples.
+
 ### Kernel and tasks (boot ROM)
 
 The CPU reads its vectors in supervisor mode, which sees the boot ROM, so the

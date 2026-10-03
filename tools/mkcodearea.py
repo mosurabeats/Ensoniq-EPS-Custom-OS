@@ -161,13 +161,16 @@ def swing_table(settings):
     return bytes(t)
 
 
-def build_image(groups, swing_settings=None, undo=False):
+def build_image(groups, swing_settings=None, undo=False, pages=False):
     """Stage 2 (src/codearea.s) at offset 0, mute table (and swing table)
     filled in and the checksum set so all words sum to 0. The loop-record
     code (src/looprec.s: swing and undo) is in it with swing settings or
     undo. Returns (bytes, symbols)."""
     looprec = bool(swing_settings) or undo
-    code, syms = mkhook.assemble(IMAGE_SRC, 0, "image", {"LOOPREC": 1 if looprec else 0})
+    code, syms = mkhook.assemble(IMAGE_SRC, 0, "image", {"LOOPREC": 1 if looprec else 0,
+                                                          "PAGES": 1 if pages else 0})
+    if pages and syms["pages_end"] > 0x1000:
+        raise ValueError("src/pages.s tables must be in the image's first 4 KB")
     table = group_table(groups)
     off = syms["mute_table"]
     code[off:off + len(table)] = table
@@ -190,12 +193,13 @@ AUTO_KEEP = {"addr": "0xFF2702", "expect": "31fc0002c2ec0c380000",
              "data": "11fc0001815e" + "6000" + ((0xFF2652 - 0xFF270A) & 0xFFFF).to_bytes(2, "big").hex()}
 
 
-def build(os_bin, groups="", area_size=None, auto_keep=False, swing_settings=None, undo=False):
+def build(os_bin, groups="", area_size=None, auto_keep=False, swing_settings=None, undo=False,
+          pages=False):
     if not isinstance(groups, dict):
         groups = parse_groups(groups)
     if isinstance(swing_settings, str):
         swing_settings = parse_swing(swing_settings)
-    image, isyms = build_image(groups, swing_settings, undo)
+    image, isyms = build_image(groups, swing_settings, undo, pages)
     blocks = (len(image) + 511) // 512
     if blocks > IMAGE_MAX_BLOCKS:
         raise ValueError(f"image is {len(image)} bytes, the overlay-3 slot holds "
@@ -246,6 +250,8 @@ def main():
     ap.add_argument("--undo", action="store_true",
                     help="RECORD while loop recording takes out the last notes played "
                          "(on with --swing too)")
+    ap.add_argument("--pages", action="store_true",
+                    help="our parameters on the edit pages (MUTE GROUP on wavesample page 6)")
     ap.add_argument("--auto-keep", action="store_true",
                     help="no KEEP = OLD NEW prompt after recording: keep NEW")
     ap.add_argument("--area", type=int, default=AREA_SIZE,
@@ -255,7 +261,7 @@ def main():
     os_bin = open(a.os, "rb").read()
     groups = parse_groups(a.groups)
     swing_settings = parse_swing(a.swing)
-    patch, info = build(os_bin, groups, a.area, a.auto_keep, swing_settings, a.undo)
+    patch, info = build(os_bin, groups, a.area, a.auto_keep, swing_settings, a.undo, a.pages)
     json.dump(patch, open(a.out, "w"), indent=1)
     used = sorted({g for g in groups.values() if g})
     print(f"{a.out}: loader {info['install_end'] - STAGE}/{STACK_LO - STAGE} bytes, "

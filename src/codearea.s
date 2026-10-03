@@ -44,7 +44,11 @@ init:   lea     hooks(pc),a0
         move.w  #0x4E71,(a1)            | nop
 2:      movea.l a2,a0
         bra.s   1b
-9:      rts
+9:
+.if PAGES
+        bsr     page_init
+.endif
+        rts
 
 | Hook table: site.l, entry offset.w, the site's 8 stock bytes; ends with
 | a 0 long. Each hook must run the displaced instructions itself.
@@ -71,8 +75,25 @@ hooks:
         .word   rec_hook-image
         .byte   0x0C,0x2D,0x00,0x01,0x00,0x06,0x66,0x3C
 .endif
+.if PAGES
+        .long   0xFF2CA6                | current entry's descriptor -> a3
+        .word   desc_hook-image
+        .byte   0x36,0x53,0xB6,0xFC,0x80,0x00,0x65,0x0A
+        .long   0xFF3214                | descriptor -> a2
+        .word   desc2_hook-image
+        .byte   0x34,0x53,0x4E,0xF9,0x00,0xC0,0x82,0x1A
+        .long   0xFF32F6                | is it the current entry's descriptor?
+        .word   cur_hook-image
+        .byte   0x4E,0xB8,0x2C,0xB0,0xB0,0x53,0xC1,0x8B
+        .long   0xFF3308                | show a parameter's label
+        .word   label_hook-image
+        .byte   0x34,0x6B,0x00,0x06,0x4E,0xB8,0x24,0x00
+.endif
         .long   0
 
+.if PAGES
+        .include "pages.s"              | first: its tables need small offsets
+.endif
         .include "mutegroup.s"
         .space  MUTE_TABLE_SIZE         | set at build time (--groups)
 .if LOOPREC
