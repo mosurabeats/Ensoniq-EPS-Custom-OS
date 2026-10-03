@@ -133,9 +133,9 @@ Overlay 2 holds the sampling code along with the disk utilities.
 | `0xFF0210` | Sampling parameter, ×2000 when used (default 0) |
 | `0xFF0211` | Flag (default 1). When 0, OP7 is driven the other way. Probably INPUT LEVEL = MIC/LINE (service manual sampling test) |
 | `0xFF0212` | Filter cutoff index (default 11) |
-| `0xC06FFE` (ROM) | 40-byte table: rate index → default filter index |
-| `0xC07026` (ROM) | 40-byte table: rate index → sample-clock divisor |
-| `0xC0704E` (ROM) | Filter table: index → one byte E. Bits 0–2 → sound chip → CA0–CA2, bits 4–6 → OP4–OP6 (see below) |
+| `0xC06FFE` (ROM) | 40-byte table: rate index → default filter index (0 up to rate 20, then rising to 11 at rate 39) |
+| `0xC07026` (ROM) | 40-byte table: rate index → divisor, 100 … 12. Sample rate = 625 kHz / divisor |
+| `0xC0704E` (ROM) | Filter table, 12 entries: `29 2a 2b 2c 2d 2e 2f 38 39 3a 3b 3c`. Byte E: bits 0–2 → sound chip → CA0–CA2, bits 4–6 → OP4–OP6, bit 3 unused (see below) |
 | `0xFFE20E` | Reset filter from the rate (called from `0xFF45A0` when the rate parameter changes) |
 | `0xFFE2BA` | Sample clock: divisor × 4 → DUART counter (`movep.w` to CTUR/CTLR at `0x28000D`) |
 | `0xFFE2D6` | Sampling setup: MUTE (OP2) high, then OP4–OP6 from E and OP7 from `0xFF0211` (`0xFFE2F6`), written via the DUART set/reset output-port registers (`0x28001D/1F`). A pin is high when its E bit is 1 |
@@ -198,12 +198,24 @@ CA0–CA2 are the sound chip's channel-address outputs (U43 on 7501, U37 on
 code is split: E bits 0–2 go out through the sound chip (the `0x200012`
 write, presumably the voices' channel-assign field), and E bit 4 goes out on
 OP4. **Higher N = higher cutoff; N = 15 is the widest the hardware can do.**
-The XR-1008 clock-to-cutoff ratio is still unknown (50:1 or 100:1 is typical
-for these parts; at 100:1 the range is 2.9–25 kHz).
+**The cutoff is FCLK / 50.** The boot ROM confirms the whole chain:
+
+* The stock table decodes to N = 1, 2, … 12 for filter settings 0 … 11
+  (N = setting + 1). N = 0 and 13–15 are never used.
+* The FILTER CUTOFF display labels (ROM `0xC03AC4`, 12 values) are
+  6.25, 6.67, 7.14, 7.69, 8.33, 9.09, 10.0, 11.1, 12.5, 14.3, 16.7, 20.0 KHZ,
+  exactly FCLK / 50 for N = 1 … 12 with the formula above.
+* The default filter per rate gives fc ≈ 0.34–0.38·fs from rate 21 up. Below
+  that the filter stays at its floor (6.25 kHz, above Nyquist), so the stock
+  EPS already aliases at low rates.
+
+N = 13, 14, 15 would be 25, 33.3 and 50 kHz. (Whether the XR-1008 still
+behaves at a 2.5 MHz clock is for the probe to show.)
 
 Consequences:
 * A true filter bypass needs a hardware mod. In software, OUT = force N = 15.
-* E = `0x20 | (N & 8) << 1 | (N & 7)` keeps the mux on Y4/Y6.
+* E = `0x28 | (N & 8) << 1 | (N & 7)` keeps the mux on Y4/Y6 and matches the
+  stock entries for N = 1–12.
   `tools/filterprobe.py` builds one disk per N this way.
 * The earlier probe disks (which forced OP4–OP6 directly) mostly switched the
   A/D to a wheel or slider. Only patterns 2 and 3 sampled audio.
@@ -245,27 +257,74 @@ record-time quantize ("auto-correct") routine is not found yet.
 The OS uses 68000 `TRAP #0–#15` (about 218 sites) as a system-call layer,
 probably into the boot ROM.
 
+## Boot ROM
+
+Two dumps, not committed. Put them in `build/bootrom/` (see RESOURCES.md):
+
+| Set | Version word `0xC00134` | CRC32 high / low EPROM |
+|---|---|---|
+| 2.00 (MAME `eps`: `eps-h.bin`, `eps-l.bin`) | `0x0200` | `d8747420` / `382beac1` |
+| 2.40 (`eps_os_24_hi/lo.bin`) | `0x0228` | `2492aee1` / `31b25dc2` |
+
+2 × 32 KB, interleaved (high EPROM = even bytes) at `0xC00000–0xC0FFFF`.
+Reset SSP `0x1548`, PC `0xC0BE38`. `tools/bootrom.py join` builds the 64 KB
+image. The two versions differ in 492 bytes. Every string and table used
+below sits at the same address in both.
+
+### Display messages
+
+The OS's "message numbers" (`move.w #$14EB,a2; jsr $23FC`) are **ROM offsets
+of NUL-terminated messages**. Inside a message, a byte below `0x20` starts a
+2-byte big-endian reference to another message; other bytes are text. So
+`0x069E` = ref `0x0AD4` ("WAVESAMPLE ") + "INFORMATION". All message numbers
+are below `0x2000`. Digits with a decimal point have their own codes (`;` =
+"6.", `[` = "7.", `!` = "0." …). `tools/bootrom.py msg` decodes messages, and
+`annotate` adds the text to a disassembly (65 sites in the resident part,
+17 in overlay 0, 27 in overlay 2; short lowercase hits like "cjgb" are
+probably display graphics, not text).
+
+### Command records
+
+`0xFFC43C–0xFFC81D` in the OS holds 71 command records of 14 bytes:
+handler.w, message.w, flags.w, 3 × button handler.w, 0. Handler words are
+absolute short addresses (`0xE1EA` → `0xFFE1EA`; below `0x8000` → low RAM
+`0x00xxxx`). docs/COMMANDS.md lists them all (`tools/bootrom.py commands`).
+
+For handlers in the overlay window, **flags bits 15–12 = 8 + overlay
+number**: `0x8…` = overlay 0 (sequencer commands, e.g. QUANTIZE TRACK at
+`0xFFED96`), `0x9…` = overlay 1 (wavesample edits), `0xA…` = overlay 2
+(pitch tables, MSB ADJUSTMENT). Checked by finding a routine entry at the
+handler address in that overlay for 19 commands. The dispatcher that reads
+the flags isn't located yet. If it handles `0xB…`, new commands can live in
+overlay 3.
+
+### Sampling page parameters
+
+Descriptors at ROM `0xC028DC`: display handler, RAM variable, message, word:
+
+| Variable | Message | Display |
+|---|---|---|
+| `0xFF020F` | SAMPLE RATE (`0x19EA`) | ROM `0x38F0` |
+| `0xFF0212` | FILTER CUTOFF (`0x19F6`) | ROM `0x3ABE`: 12 labels 6.25 … 20.0 KHZ |
+| `0xFF0210` | (`0x19FC`, pre-trigger) | |
+| `0xFF0211` | INPUT LEVEL (`0x1B6C`) | ROM `0x3AAE`: MIC / LINE |
+
 ### Open questions
 
-1. **Display text format.** Only a few disk-utility strings (`COPY FLOPPY`,
-   `BACKUP`, `RESTORE`, `INTERLEAVE`, `COPY OS TO SCSI DRIVE?`) are plain
-   ASCII, and all of them are in overlay 2. Parameter and page names
-   (TRUNCATE, LAYER…) must be encoded or tokenised. Finding them is needed
-   before adding pages or parameters.
+1. ~~**Display text format.**~~ Solved: messages live in the boot ROM (see
+   Boot ROM → Display messages). New pages can reuse ROM messages. New text
+   still needs a way to print our own strings.
 2. **Free resident space** for real-time hooks. None found yet (see
    ROADMAP.md).
 3. **How overlay numbers map to disk blocks.** The loader computes
    `d3 = n + 7` before the read, so the unit isn't confirmed yet. We need to
    confirm the OS will load overlay 3 when asked.
 4. **How the boot code at file 0x14000 gets into the window**, and whether the loader always reads a full 8 KB (needed before appending code to it).
-5. **Boot ROM contents.** The display text, the TRAP layer, the parameter
-   descriptors and the sampling tables (`0xC06FFE`, `0xC07026`, `0xC0704E`)
-   are all in the 2 × 32 KB boot EPROMs (U26/U27 on 7501). MAME knows this
-   ROM set (`eps-l.bin` CRC32 `382beac1`, `eps-h.bin` CRC32 `d8747420`) but
-   doesn't ship it. Dumping the EPROMs of our own unit settles 1 and most
-   of the UI work.
-6. **XR-1008 clock-to-cutoff ratio** (no datasheet found yet), and which N
-   the stock table uses at each rate. The filter probe disks measure both.
+5. **Boot ROM code.** We have the ROM now (2.00 and 2.40). Still to map:
+   the TRAP handlers, the display routine behind `jsr $23FC`, the command
+   dispatcher (flags → overlay) and how the low-RAM handler addresses
+   (`0x4B54`, `0x7F88` …) get filled.
+6. ~~**XR-1008 clock-to-cutoff ratio.**~~ 50:1, from the ROM's cutoff labels.
 
 ## Reproducing
 

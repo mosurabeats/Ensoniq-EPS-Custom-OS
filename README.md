@@ -39,6 +39,15 @@ tools/fetch.sh        # build/eps249os.ede, eps_os_249.bin, os_versions/, refs/
 
 `epstool.py` also reads HxC/Gotek `.hfe` images (`ls`, `extract`, `hfe2img`).
 
+The boot ROM isn't fetched. Put the EPROM dumps in `build/bootrom/` (see
+docs/RESOURCES.md), then:
+
+```sh
+python3 tools/bootrom.py msg      build/bootrom/eps_boot_200.bin 14eb   # 'TUNING KBD - HANDS OFF'
+python3 tools/bootrom.py annotate build/bootrom/eps_boot_200.bin build/eps_os_249.dis > build/eps_os_249.ann.dis
+python3 tools/bootrom.py commands build/bootrom/eps_boot_200.bin build/eps_os_249.bin   # docs/COMMANDS.md
+```
+
 ## Building a hook
 
 ```sh

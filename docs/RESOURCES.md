@@ -36,14 +36,29 @@ get full-resolution pages.
 | MAME `src/mame/ensoniq/esq5505.cpp` | EPS memory map, ROM set (`eps-l.bin` CRC32 `382beac1`, `eps-h.bin` CRC32 `d8747420`, 32 KB each). The driver doesn't boot |
 | MAME `src/devices/sound/es5506.cpp` | ES5505/5506 voice registers. The EPS has an ES5504 (DOC II), which MAME doesn't model separately |
 
+## Boot ROM (user-supplied, not committed)
+
+Put the dumps in `build/bootrom/` and join them:
+
+```sh
+python3 tools/bootrom.py join build/bootrom/unknown/eps-h.bin build/bootrom/unknown/eps-l.bin \
+    build/bootrom/eps_boot_200.bin
+cp build/bootrom/v24/eps_os_24.bin build/bootrom/eps_boot_240.bin   # already joined
+python3 tools/bootrom.py info build/bootrom/eps_boot_200.bin
+```
+
+| Set | Files | CRC32 (high / low) | Version word |
+|---|---|---|---|
+| 2.00 | `eps-h.bin`, `eps-l.bin` (= MAME `eps`) | `d8747420` / `382beac1` | `0x0200` |
+| 2.40 | `eps_os_24_hi.bin`, `eps_os_24_lo.bin`, `eps_os_24.bin` (joined) | `2492aee1` / `31b25dc2` | `0x0228` |
+
+Which set is in our unit is not known yet: `tools/bootrom.py info` on a dump
+of U26/U27, or the version shown at power-up, would tell.
+
 ## Still missing
 
-* **Boot ROM image** (U26/U27, 2 × 27256). It holds the display text, TRAP
-  layer, parameter descriptors and sampling tables. Best source: dump the
-  EPROMs of our own unit with any 27C256-capable programmer and compare the
-  CRCs above.
-* **XR-1008 datasheet** (Exar switched-capacitor low-pass) for the
-  clock-to-cutoff ratio.
+* **XR-1008 datasheet** (Exar switched-capacitor low-pass): the 50:1 ratio is
+  known from the ROM, but not its maximum clock (N = 15 runs it at 2.5 MHz).
 * **ES5504 (DOC II) register map**, to confirm which register holds the
   channel-assign (CA) bits.
 * **EPS MIDI SysEx / parameter spec** (Ensoniq published one; Transoniq

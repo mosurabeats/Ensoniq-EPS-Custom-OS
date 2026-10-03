@@ -40,43 +40,57 @@ setting, so low sample rates alias (SP-1200 style crunch). The EPS hardware
 can't bypass the filter (see below), so OUT selects the widest cutoff
 whatever the sample rate.
 
-**Hardware** (schematics, see ANALYSIS.md → Sampling filter hardware): the
-filter is an XR-1008 switched-capacitor low-pass, always in the path. Its
-clock comes from a 10 MHz counter preset by a 4-bit code
-N = {OP4, CA2, CA1, CA0}: FCLK = 10 MHz / (2·(17 − N)), 294 kHz at N = 0 to
-2.5 MHz at N = 15. Higher N = higher cutoff.
+**Hardware** (schematics + boot ROM, see ANALYSIS.md → Sampling filter
+hardware): the filter is an XR-1008 switched-capacitor low-pass, always in
+the path. Its clock comes from a 10 MHz counter preset by a 4-bit code
+N = {OP4, CA2, CA1, CA0}: FCLK = 10 MHz / (2·(17 − N)), cutoff = FCLK / 50.
 
 **How the stock OS handles it** (overlay 2, see ANALYSIS.md → Sampling):
-* Sample rate index `0xFF020F` (40 rates) → boot-ROM divisor table `0xC07026`
-  → DUART counter/timer = sample clock.
-* Filter index `0xFF0212` → boot-ROM table `0xC0704E` → byte E. E bits 0–2
-  go to the sound chip (→ CA0–CA2), and bits 4–6 go to OP4–OP6. OP5/OP6 are
-  the analog-mux select and must stay on the sampling input (AN2 = 1,
-  AN0 = 0). OP4 is the counter's MSB.
-* Changing the rate resets the filter from a third ROM table (`0xC06FFE`), via
-  `0xFF45A0` → overlay routine `0xFFE20E`.
-* The allowed cutoff range comes from parameter descriptors that aren't in
-  the OS (presumably in the boot ROM).
+* FILTER CUTOFF (`0xFF0212`) has 12 settings, labelled 6.25 … 20.0 KHZ.
+  Setting k → boot-ROM table `0xC0704E` → byte E → N = k + 1. E bits 0–2 go
+  to the sound chip (→ CA0–CA2), bits 4–6 to OP4–OP6. OP5/OP6 are the
+  analog-mux select and must stay on the sampling input. OP4 is the counter
+  MSB.
+* Changing SAMPLE RATE (`0xFF020F`, 625 kHz / divisor, 6.25–52.1 kHz) resets
+  FILTER CUTOFF from ROM table `0xC06FFE` (`0xFF45A0` → `0xFFE20E`).
+* The hardware can go to N = 13, 14, 15 = 25, 33.3, **50 kHz**. The stock OS
+  stops at N = 12 = 20 kHz.
+
+**What this means for OUT.** FILTER CUTOFF looks user-settable up to
+20 kHz at any sample rate (12 labels, one descriptor; the range check isn't
+read yet). At low rates the stock floor (6.25 kHz) is
+already above Nyquist. So the stock EPS can already sample at, say, 10 kHz
+with a 20 kHz cutoff, which aliases almost everything. OUT would add
+20 → 50 kHz, which matters only for sources with content above 20 kHz.
+CD-sourced material has none, so it may sound the same as stock 20.0 KHZ.
+
+**Step 0: try the stock EPS (no custom OS).** Set a low SAMPLE RATE, then set
+FILTER CUTOFF to 20.0 KHZ (after the rate, because changing the rate resets
+the filter). If that is crunchy enough, feature 2 shrinks to a convenience:
+keep the cutoff at its maximum when the rate changes.
 
 **Step 1: probe (ready to test).** `tools/filterprobe.py` builds 16 OS
 disks, one per N. Each replaces the table read at `0xFFE38E` with
-`moveq #E,d4` (4 bytes, overlay 2), with E = `0x20 | (N & 8) << 1 | (N & 7)`.
-Sample white noise or cymbals at a low rate with N = 15 and with the stock
-disk, and compare. Sweeping N also gives the XR-1008 cutoff ratio.
+`moveq #E,d4` (4 bytes, overlay 2), E = `0x28 | (N & 8) << 1 | (N & 7)`.
+N = 1–12 reproduce the stock settings. Compare N = 12 with N = 15 at a low
+rate, with a bright source that has real content above 20 kHz (a synth or
+noise source, not a CD).
 
 (The first probe disks forced OP4–OP6 directly. Six of the eight patterns
 switched the A/D to a wheel or slider, so they don't test the filter.)
 
-**Step 2: OUT.** Force N = 15 for one filter setting. Two candidates:
-* the top of the cutoff range means OUT (no UI change needed), or
-* a new OUT value past the top, which needs the range descriptor.
+**Step 2: OUT.** Options, cheapest first:
+* **Lock:** skip the rate → filter reset (`0xFFE20E`) when a flag is set,
+  so 20.0 KHZ stays put.
+* **Top = OUT:** setting 11 uses N = 15 (`moveq #$3F,d4` when the index is
+  11). The display still says 20.0 KHZ unless we patch its label.
+* **New 13th value "OUT":** needs the descriptor's range and a label.
 
-Either way it's a few bytes in overlay 2 at `0xFFE38E` (load E from our own
-small table, or `moveq #$37,d4` when the setting is OUT). Because it lives
-in the sampling overlay, it needs no resident space.
+All of these are a few bytes in overlay 2 at `0xFFE20E`/`0xFFE38E`. Because
+they live in the sampling overlay, they need no resident space.
 
 **True bypass (optional hardware mod):** a switch that routes the signal
-around the XR-1008. Only worth it if N = 15 isn't crunchy enough.
+around the XR-1008.
 
 ### 3. Sequencer: MPC-style swing and quantize
 
@@ -93,8 +107,15 @@ around the XR-1008. Only worth it if N = 15 isn't crunchy enough.
 is in `0xFF1602` (384 for 4/4). The time-signature and bar/beat math is at
 `0xFF5A18–0xFF5AE0` (variables around `0xFF803C–0xFF8046`).
 
-**Still to find:** the record-time quantize routine and the track event
-format.
+**QUANTIZE TRACK exists as a command** (record `0xFFC4D6`, message
+`0x0C78`, handler `0xFFED96` in overlay 0). That routine is where to start:
+it must walk the track events and round their times, so it shows the event
+format and is the natural place to add swing and strength. See
+docs/COMMANDS.md for the other sequencer commands (SHIFT TRACK BY CLOCKS,
+EVENT EDIT TRACK, …).
+
+**Still to find:** the record-time quantize (auto-correct) routine and the
+track event format.
 
 ## Shared blocker: space for new code
 
@@ -104,8 +125,8 @@ Resident RAM (`0xFF2000–0xFFDFFF`) is packed. What we measured:
 |---|---|---|---|
 | **Dead code** (nothing calls it) | ~150 bytes in 7 pieces of 16–30 bytes. Not usable | none | measured; ruled out |
 | **Move boot-only code into the boot overlay.** File chunk 0x14000 is the init code; it runs once from the overlay window and has ~4.5 KB unused behind it. A resident routine used only at boot can move there and leave its resident space free. | `0xFF448C–0xFF44CB` = **64 contiguous bytes**, confirmed (only the init code calls it). More is likely from routines reached only through other boot-only routines. | No features lost. Two call sites in the init code are repointed; one `beq.w` needs re-encoding | best first step |
-| **Move non-real-time resident routines into overlay 3** (menu commands, edit-page handlers), leaving a ~24-byte stub: "load overlay 3, call, reload previous overlay" | KBs | That command gains a short disk read when used (the EPS already does this for its own overlays). Only safe for routines never called while overlay code is running | needs routines mapped to commands |
-| **Remove features you don't use**: replace a resident command handler with "not available" and reuse its bytes | size of the feature | You lose that feature. SCSI is mostly in the boot ROM, so removing it frees little | your call, once commands are named |
+| **Move non-real-time resident routines into overlay 3** (menu commands, edit-page handlers), leaving a ~24-byte stub: "load overlay 3, call, reload previous overlay" | KBs | That command gains a short disk read when used (the EPS already does this for its own overlays). Only safe for routines never called while overlay code is running | commands mapped (docs/COMMANDS.md); need the dispatcher |
+| **Remove features you don't use**: replace a resident command handler with "not available" and reuse its bytes | size of the feature | You lose that feature. SCSI is mostly in the boot ROM, so removing it frees little | your call; commands are named in docs/COMMANDS.md |
 | **Optimise (rewrite routines smaller)**: re-implement a routine in fewer bytes, in place, and use the freed tail | 10–30% of each rewritten routine | Highest risk: every rewrite must behave identically. Don't touch real-time code (voices, MIDI, sequencer clock) | last resort |
 | **Reserve sample RAM** (~1 KB, at boot from the init code) | as much as needed | Must confirm that the 68000 can execute from sample RAM. Costs 1 KB of sample memory (unnoticeable with your 2x expander) | needs a hardware test |
 
@@ -119,17 +140,15 @@ cave plus one more small cave, or entirely in the next relocated routine.
 
 ### UI descriptors and message numbers
 
-`0xFFC560…` holds command/page records of the form
-`handler, message#, flags, 3 × button handler, 0`, for example
-`7F88 132A 0000 4552 455A 4552 0000`. The OS passes **message numbers**
-(`0x1300–0x1CA7`) to the display routines (e.g. `move.w #0x14EB,a2;
-jsr 0x23FC`). The display text is probably stored in the boot ROM, which
-explains why the OS has almost no ASCII. Two consequences:
-* These records let us list every command and its handler, which is how we
-  pick what to move to overlay 3. Naming them needs the boot ROM text or a
-  hardware run.
-* New screens (mute group, CHOP, swing) need our own text-drawing call or
-  reused ROM messages.
+Solved with the boot ROM (ANALYSIS.md → Boot ROM). Message numbers are ROM
+offsets of tokenised strings, and the 71 command records at
+`0xFFC43C–0xFFC81D` are all named in docs/COMMANDS.md. Each record's flags
+give its overlay (`0x8…` = 0, `0x9…` = 1, `0xA…` = 2). Consequences:
+* We can now pick commands to move into overlay 3. If the dispatcher accepts
+  flags `0xB…`, a command moves by copying its handler to overlay 3 and
+  changing one flags word. Next step: find the dispatcher.
+* New screens (mute group, CHOP, swing) can reuse ROM messages (e.g.
+  "OFF", digits). Brand-new words need our own text-drawing call.
 
 ### Debug channel: MIDI out
 
@@ -148,8 +167,8 @@ expanded unit.
 | M2 | MIDI-out debug patch on hardware: dump sample bounds and memory size from an expanded EPS | next |
 | M2b | Code location for resident hooks (sample RAM reservation or a freed routine) | |
 | M3 | Mute groups v1 (groups set at build time) on hardware | hook written |
-| M4 | Display/parameter system decoded; mute group editable from the panel | |
-| M5 | Filter probe on hardware → filter OUT | 16 probe disks ready (redone after the schematics) |
+| M4 | Display/parameter system decoded; mute group editable from the panel | messages + commands decoded from the boot ROM |
+| M5 | Filter probe on hardware → filter OUT | try stock 20.0 KHZ first; 16 probe disks ready |
 | M6 | Quantize + swing at record time; TIMING CORRECT | |
 | M7 | Mute group saved with the instrument | |
 
