@@ -517,7 +517,7 @@ Descriptors at ROM `0xC028DC`: display handler, RAM variable, message, word:
   descriptor for that slot when it's reached through that page's record,
   `0xFF3308` shows our label text from the code area (label words `0x7000`
   + offset), and `0xFF33EA`/`0xFF3B1E` find our choice tables. Added:
-  * MUTE GROUP after VOLUME MOD on wavesample page 6 (byte +0x11E). The
+  * MUTE GROUP after VOLUME MOD on the 6 Amp page (byte +0x11E). The
     mute hook (`src/mutegroup.s`) takes the new note's group from the
     wavesample the key plays (first layer with one) and a sounding voice's
     from its wavesample (voice +22).

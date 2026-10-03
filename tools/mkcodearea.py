@@ -180,7 +180,7 @@ def build_image(groups, swing_settings=None, undo=False, pages=False):
     code, syms = mkhook.assemble(IMAGE_SRC, 0, "image", {"LOOPREC": 1 if looprec else 0,
                                                           "PAGES": 1 if pages else 0})
     if pages and any(groups.values()):
-        raise ValueError("with --pages, mute groups are per wavesample (wavesample page 6, "
+        raise ValueError("with --pages, mute groups are per wavesample (the 6 Amp page, "
                          "saved with the instrument): use epstool.py groups for a disk's files")
     if pages and syms["pages_end"] > 0x1000:
         raise ValueError("src/pages.s tables must be in the image's first 4 KB")
@@ -269,7 +269,7 @@ def main():
                     help="RECORD while loop recording takes out the last notes played "
                          "(on with --swing too)")
     ap.add_argument("--pages", action="store_true",
-                    help="our parameters on the edit pages (MUTE GROUP on wavesample page 6)")
+                    help="our parameters on the edit pages (MUTE GROUP on the 6 Amp page)")
     ap.add_argument("--auto-keep", action="store_true",
                     help="no KEEP = OLD NEW prompt after recording: keep NEW")
     ap.add_argument("--area", type=int, default=AREA_SIZE,

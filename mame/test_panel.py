@@ -2,7 +2,7 @@
 """Our edit-page parameters (--pages) on the whole emulated EPS (MAME).
 
 One --pages --auto-keep disk with the TR 8O8 kit, three runs:
-* mame/keys/panel_mute.txt: EDIT, wavesample page 6, MUTE GROUP = 1 with
+* mame/keys/panel_mute.txt: EDIT, the 6 Amp page, MUTE GROUP = 1 with
   WS=ALL (the whole kit one group), then C2, E2, G2 with key-ups in
   between: each note cuts the one before, a key-up cuts nothing, and every
   wavesample's byte 0x11E holds 1.
@@ -100,7 +100,7 @@ def main():
         ok.append(cond)
         print(f"{'PASS' if cond else 'FAIL'}  {what}")
 
-    check("MUTE GROUP shows on wavesample page 6", "MUTE GROUP=" in out)
+    check("MUTE GROUP shows on the 6 Amp page", "MUTE GROUP=" in out)
     check("WS=ALL: every wavesample's group is 1", groups == [1] * 13)
     check("E2 cuts C2 (only once E2 starts)", killed_at(frames, C2) and min(killed_at(frames, C2)) > 33.25)
     check("G2 cuts E2", killed_at(frames, E2) and min(killed_at(frames, E2)) > 33.55)

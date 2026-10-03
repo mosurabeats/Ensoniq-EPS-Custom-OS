@@ -1,7 +1,7 @@
 # loop_record.txt with QUANTIZE set from the panel before loop recording
-# (--pages, no --swing: QUANTIZE starts OFF): EDIT, SEQ/SONG, previous
+# (--pages, no --swing: QUANTIZE starts OFF): EDIT, Seq·Song, previous
 # parameter twice (SWING%, then QUANTIZE), up 5 times: OFF -> 1/16.
-# Buttons: docs/MAME.md (EDIT 5, SEQ/SONG 21, previous parameter 16, up 10).
+# Buttons: docs/MAME.md (EDIT 5, Seq·Song 21, previous parameter 16, up 10).
 10.5 8f 00    # LOAD
 10.65 0f 00
 11.5 a3 00    # ENTER
@@ -22,7 +22,7 @@
 34.15 23 00
 34.4 85 00    # EDIT
 34.5 05 00
-34.6 95 00    # SEQ/SONG
+34.6 95 00    # Seq·Song
 34.7 15 00
 34.8 90 00    # previous: SWING%
 34.9 10 00

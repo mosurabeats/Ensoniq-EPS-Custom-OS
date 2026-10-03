@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build EPS249_DRUMS: OS 2.49 + code area with our edit-page parameters
-# (--pages: MUTE GROUP on wavesample page 6, QUANTIZE and SWING% on the
+# (--pages: MUTE GROUP on the 6 Amp page, QUANTIZE and SWING% on the
 # sequencer page), loop recording undo, auto-keep (no KEEP = OLD NEW prompt)
 # + the TR 8O8 and LIVE KIT kits from Ensoniq's factory drum disk 9
 # (tools/fetch.sh sounds), with mute groups preset in their wavesamples.

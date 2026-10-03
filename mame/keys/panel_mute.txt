@@ -1,5 +1,5 @@
 # Mute group set from the panel (--pages): load TR 8O8 into instrument 1,
-# EDIT, wavesample page 6, previous parameter = MUTE GROUP (after VOLUME
+# EDIT, the 6 Amp page, previous parameter = MUTE GROUP (after VOLUME
 # MOD), arrow up -> 1. WS=ALL: every wavesample of the layer, so the
 # whole kit is one group. Then C2, E2, G2 300 ms apart, like load1_play.txt.
 # Buttons: docs/MAME.md (EDIT 5, page 6 = 30, previous parameter 16, up 10).

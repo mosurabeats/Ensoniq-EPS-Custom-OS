@@ -89,22 +89,24 @@ the ROM table `0xC02032`, ids 0x40–0x43 go to the sequencer task):
 
 | Code | Button |
 |---|---|
-| 15 | LOAD (also 26, 33 open the disk's instrument list) |
-| 35 | ENTER (YES) |
+| 15 | Load |
+| 33 | probably Cancel·No (id 0x23) |
+| 35 | Enter·Yes |
 | 10, 11 | arrow buttons (next/previous file on the LOAD page) |
 | 2, 8, 14, 20, 4, 34, 28, 22 | instrument buttons 1–8, in that order |
 | 3 | RECORD (button id 0x40; held: hold it and press PLAY to record) |
 | 23, 29 | PLAY / STOP-CONTINUE (ids 0x43, 0x41; either starts the sequencer) |
 | 7 | SAMPLE ("PICK SAMPLE INSTRUMENT") |
-| 12, 13, 18, 19, 24, 25, 30, 31, 36, 37, 0, 1 | number buttons (ids 0x30–0x3B); in EDIT they pick page 0, 1, 2 … (WAVESAMPLE pages: 0x32–0x38, e.g. code 30 = page 6: WS VOLUME …) |
-| 5 | EDIT (first shows the edit selection: instrument, LYR=, WS=) |
-| 6 | COMMAND |
-| 26 | INSTRUMENT page (LOAD: the disk's instruments) |
-| 21 | SEQ/SONG page (LOAD: sequences; COMMAND: CREATE NEW SEQUENCE) |
-| 9 | SYSTEM/MIDI page (LOAD: directories; COMMAND: LOAD MIRAGE-DSK SOUND) |
-| 27 | LOAD: MIDI files |
-| 16, 17 | previous / next parameter on an edit page |
-| 10, 11 | in EDIT: value up / down |
+| 12, 13, 18, 19, 24, 25, 30, 31, 36, 37 | number/page buttons 0 Track, 1 Env 1, 2 Env 2, 3 Env 3, 4 Pitch, 5 Filter, 6 Amp, 7 LFO, 8 Wave, 9 Layer (ids 0x30–0x39; 0, 1 = ids 0x3A/0x3B) |
+| 5 | Edit (first shows the edit selection: instrument, LYR=, WS=) |
+| 6 | Command |
+| 26 | Instrument page (Load: the disk's instruments) |
+| 21 | Seq·Song page (Load: sequences; Command: CREATE NEW SEQUENCE) |
+| 9 | System page (Load: directories; Command: LOAD MIRAGE-DSK SOUND) |
+| 27 | MIDI page (Load: MIDI files) |
+| 32 | probably Set Keyboard Range (id 0x12) |
+| 16, 17 | ◄ / ►: previous / next parameter |
+| 10, 11 | ▲ / ▼: value up / down (Load: next/previous file) |
 
 To load an instrument: LOAD, ENTER ("PICK INSTRUMENT BUTTON"), an
 instrument button. Press that instrument button again afterwards to play it
@@ -159,7 +161,7 @@ python3 mame/test_loop_record.py  # --auto-keep: no KEEP prompt, the take plays 
 python3 mame/test_swing.py        # --swing 16:mpc:58: takes land on the swung grid
 python3 mame/test_undo.py         # --undo: RECORD takes out this pass's, then the
                                   # last pass's notes (mame/keys/loop_undo.txt)
-python3 mame/test_panel.py        # --pages: MUTE GROUP set on wavesample page 6
+python3 mame/test_panel.py        # --pages: MUTE GROUP set on the 6 Amp page
                                   # (mame/keys/panel_mute.txt), QUANTIZE on the
                                   # sequencer page (loop_panel_quant.txt)
 ```

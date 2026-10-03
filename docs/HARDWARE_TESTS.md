@@ -85,7 +85,7 @@ mute-group one.
 `EPS249_CUSTOM` is the one to use: OS 2.49 with our additions and nothing
 else, so the rest of the disk (about 700 KB) is free for your own sounds.
 Build it with `tools/mkosdisk.sh`. Everything below works the same on it;
-set mute groups on your own samples on wavesample page 6.
+set mute groups on your own samples on the 6 Amp page.
 
 `EPS249_DRUMS` is the same OS plus two kits from Ensoniq's factory drum
 disk 9, for testing. Build it with `tools/mkdrums.sh` (after
@@ -100,15 +100,13 @@ in any instrument slot and stay with the kit when you save it.
 
 ### Setting things on the EPS (new parameters)
 
-Our parameters sit on the EPS's own EDIT pages. Step through a page's
-parameters with the two buttons that move to the previous/next parameter,
-and change a value with the arrows or the data slider, as for any other
-parameter.
+Our parameters sit on the EPS's own Edit pages. Step through a page's
+parameters with the ◄ / ► arrows, and change a value with ▲ / ▼ or the
+Data Entry slider, as for any other parameter.
 
-* **MUTE GROUP** (0 = none, 1–15): EDIT, select the instrument, then
-  wavesample page 6 (the one with WS VOLUME, PAN, the fades and VOLUME
-  MOD). MUTE GROUP is right after VOLUME MOD (or one step back from WS
-  VOLUME).
+* **MUTE GROUP** (0 = none, 1–15): Edit, select the instrument, then
+  **6 Amp** (the page with WS VOLUME, PAN, the fades and VOLUME MOD).
+  MUTE GROUP is right after VOLUME MOD: press ◄ once from WS VOLUME.
   * With **WS=ALL** on the edit selection screen, the value goes to every
     wavesample of the layer: the whole instrument in one group (a chopped
     loop where every slice cuts the others).
@@ -119,23 +117,24 @@ parameter.
   * A sounding note is cut when a note in the same group starts (also the
     same key again, MPC style). Releasing a key cuts nothing.
 * **QUANTIZE** (OFF, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T) and
-  **SWING%** (50–75; below 50 = straight, only 1/8 and 1/16 swing): EDIT,
-  SEQ/SONG page, right after RECORD MODE. They apply to every instrument
+  **SWING%** (50–75; below 50 = straight, only 1/8 and 1/16 swing): Edit,
+  **Seq·Song**, right after RECORD MODE (◄ once from the first page gets to
+  SWING%, twice to QUANTIZE). They apply to every instrument
   when you loop record (RECORD MODE = LOOPED): what you play lands on the
   grid from the next pass on, like an MPC's timing correct. This disk
   starts at 1/16 and 58%. Not saved with the sequence (yet): set them after
   power-on.
-* **Undo while loop recording:** press RECORD on its own (not RECORD +
-  PLAY). It takes out the notes you played so far in this pass, or if you
+* **Undo while loop recording:** press Record on its own (not Record +
+  Play). It takes out the notes you played so far in this pass, or if you
   haven't played any yet, the last pass's. A second press takes out the
   pass before. No message on the display.
 
 **Please try and tell us:**
-1. MUTE GROUP shows on wavesample page 6 and the arrows change it; WS=ALL
+1. MUTE GROUP shows on the 6 Amp page and ▲ / ▼ change it; WS=ALL
    vs one wavesample behaves as above.
 2. **SAVE INSTRUMENT** after changing a group, power off, reload: is the
    group still there? (MAME can't save to disk yet, so this is untested.)
-3. QUANTIZE/SWING% on the SEQ/SONG page, and a loop recording with them.
+3. QUANTIZE/SWING% on the Seq·Song page, and a loop recording with them.
 4. Anything on those pages that looks wrong: garbled text, the wrong
    parameter, a value that won't change, or an error/reboot.
 

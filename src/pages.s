@@ -178,7 +178,7 @@ page_init:
 | page record, the ROM index entry it takes in (ROM offset, long), our
 | descriptor (offset in the image)
 slots:
-        .word   0xC110                  | wavesample page 6
+        .word   0xC110                  | wavesample page 6 (the 6 Amp button)
         .long   0x2572
         .word   mute_group_desc-image
         .word   0xC0B6                  | sequencer page + 2

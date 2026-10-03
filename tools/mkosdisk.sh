@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build EPS249_CUSTOM: OS 2.49 + code area with our edit-page parameters
-# (--pages: MUTE GROUP on wavesample page 6, QUANTIZE and SWING% on the
+# (--pages: MUTE GROUP on the 6 Amp page, QUANTIZE and SWING% on the
 # sequencer page), loop recording undo and auto-keep (no KEEP = OLD NEW
 # prompt). Just the OS: the rest of the disk is free for your own sounds.
 # Writes build/test/EPS249_CUSTOM.hfe (Gotek) and .img (MAME).

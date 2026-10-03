@@ -10,7 +10,7 @@ byte for byte), so these offsets are the ones the OS uses in RAM
 * layer record +6 + 2*key (key 21-108): the wavesample that key plays.
 * wavesample record (0x120 bytes, then the sample): name at +0x0A, one
   parameter per word (value in the high byte); +0x11E: our mute group
-  (src/pages.s, wavesample page 6 with --pages).
+  (src/pages.s, the 6 Amp page with --pages).
 """
 import re
 
