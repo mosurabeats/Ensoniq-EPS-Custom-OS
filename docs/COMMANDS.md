@@ -3,9 +3,9 @@
 Generated with `python3 tools/bootrom.py commands build/bootrom/eps_boot_200.bin build/eps_os_249.bin`
 (identical with boot ROM 2.40). See ANALYSIS.md → Boot ROM → Command records.
 
-* **Handler**: absolute short address. `FFxxxx` in `FFE000–FFFFFF` is in the
-  overlay window; below `8000` it is low RAM filled at boot (several commands
-  share `004B54`).
+* **Handler**: `0xFF0000 |` the record's handler word. The OS runs in user
+  mode, where `0x000000–0x00FFFF` mirrors OS RAM, so `7F88` is `FF7F88`.
+  `FF4B54` is a do-nothing handler shared by several records.
 * **Overlay**: flags bits 15–12 minus 8, for handlers in the overlay window.
 * The record's other words are three button handlers and a 0.
 
@@ -14,8 +14,8 @@ Generated with `python3 tools/bootrom.py commands build/bootrom/eps_boot_200.bin
 | `FFC43C` | CREATE NEW SEQUENCE | `0CB2` | `FFE2FA` | 0 | `8100` |
 | `FFC44A` | COPY SEQUENCE | `0CD6` | `FFE8AE` | 0 | `8100` |
 | `FFC458` | DELETE SEQUENCE | `0CC6` | `FFE924` | 0 | `8200` |
-| `FFC466` | SAVE CURRENT SEQUENCE | `0ECD` | `007F7C` |  | `8200` |
-| `FFC474` | SAVE SONG + ALL SEQS | `0EE3` | `004D82` |  | `8200` |
+| `FFC466` | SAVE CURRENT SEQUENCE | `0ECD` | `FF7F7C` |  | `8200` |
+| `FFC474` | SAVE SONG + ALL SEQS | `0EE3` | `FF4D82` |  | `8200` |
 | `FFC482` | RENAME SONG/SEQUENCE | `0F18` | `FFE9E8` | 0 | `8200` |
 | `FFC490` | SEQUENCER INFORMATION | `0F58` | `FFE9DC` | 0 | `8100` |
 | `FFC49E` | ERASE SONG + ALL SEQS | `0F2D` | `FFE9C0` | 0 | `8000` |
@@ -34,30 +34,30 @@ Generated with `python3 tools/bootrom.py commands build/bootrom/eps_boot_200.bin
 | `FFC554` | TRANSPOSE TRACK | `0C68` | `FFEC50` | 0 | `8100` |
 | `FFC562` | SCALE CONTROLLER | `0BF1` | `FFED40` | 0 | `8100` |
 | `FFC570` | SHIFT TRACK BY CLOCKS | `0C36` | `FFED60` | 0 | `8100` |
-| `FFC57E` | NO COMMANDS ON PAGE | `153B` | `004B54` |  | `0000` |
-| `FFC58C` | CALIBRATE KEYBOARD | `132A` | `007F88` |  | `0000` |
-| `FFC59A` | SOFTWARE INFORMATION | `13C2` | `004B54` |  | `0100` |
-| `FFC5A8` | EXAMINE DOS STATUS | `1640` | `007FC6` |  | `0200` |
+| `FFC57E` | NO COMMANDS ON PAGE | `153B` | `FF4B54` |  | `0000` |
+| `FFC58C` | CALIBRATE KEYBOARD | `132A` | `FF7F88` |  | `0000` |
+| `FFC59A` | SOFTWARE INFORMATION | `13C2` | `FF4B54` |  | `0100` |
+| `FFC5A8` | EXAMINE DOS STATUS | `1640` | `FF7FC6` |  | `0200` |
 | `FFC5B6` | EXAMINE ANALOG INPUTS | `1499` | `FFBE84` |  | `0200` |
 | `FFC5C4` | MSB ADJUSTMENT | `154F` | `FFFD82` | 2 | `A000` |
-| `FFC5D2` | DC OFFSET ADJUSTMENT | `09D6` | `004B54` |  | `A100` |
-| `FFC5E0` | CREATE NEW INSTRUMENT | `169A` | `004CEC` |  | `0115` |
-| `FFC5EE` | COPY INSTRUMENT | `16BE` | `004CF6` |  | `0112` |
-| `FFC5FC` | DELETE INSTRUMENT | `16A2` | `004D16` |  | `009C` |
-| `FFC60A` | SAVE INSTRUMENT | `1718` | `004D46` |  | `0100` |
-| `FFC618` | SAVE BANK | `171E` | `004D5A` |  | `0100` |
-| `FFC626` | CREATE PRESET | `15DE` | `004DD0` |  | `01C4` |
-| `FFC634` | CREATE NEW LAYER | `16A8` | `004B96` |  | `0016` |
-| `FFC642` | COPY LAYER | `16CA` | `004BE8` |  | `0198` |
-| `FFC650` | DELETE LAYER | `16E2` | `004CCE` |  | `0097` |
-| `FFC65E` | EDIT PITCH TABLE | `16B0` | `004B54` |  | `A200` |
+| `FFC5D2` | DC OFFSET ADJUSTMENT | `09D6` | `FF4B54` |  | `A100` |
+| `FFC5E0` | CREATE NEW INSTRUMENT | `169A` | `FF4CEC` |  | `0115` |
+| `FFC5EE` | COPY INSTRUMENT | `16BE` | `FF4CF6` |  | `0112` |
+| `FFC5FC` | DELETE INSTRUMENT | `16A2` | `FF4D16` |  | `009C` |
+| `FFC60A` | SAVE INSTRUMENT | `1718` | `FF4D46` |  | `0100` |
+| `FFC618` | SAVE BANK | `171E` | `FF4D5A` |  | `0100` |
+| `FFC626` | CREATE PRESET | `15DE` | `FF4DD0` |  | `01C4` |
+| `FFC634` | CREATE NEW LAYER | `16A8` | `FF4B96` |  | `0016` |
+| `FFC642` | COPY LAYER | `16CA` | `FF4BE8` |  | `0198` |
+| `FFC650` | DELETE LAYER | `16E2` | `FF4CCE` |  | `0097` |
+| `FFC65E` | EDIT PITCH TABLE | `16B0` | `FF4B54` |  | `A200` |
 | `FFC66C` | COPY PITCH TABLE | `16D0` | `FFFED4` | 2 | `A100` |
 | `FFC67A` | DELETE PITCH TABLE | `16E8` | `FFFEE8` | 2 | `A000` |
 | `FFC688` | EXTRAPOLATE PITCH TBL | `1480` | `FFFEBE` | 2 | `A200` |
-| `FFC696` | CREATE NEW WAVESAMPLE | `16B6` | `004C28` |  | `0099` |
-| `FFC6A4` | COPY WAVESAMPLE | `16D6` | `004C6E` |  | `019B` |
-| `FFC6B2` | DELETE WAVESAMPLE | `16DC` | `004C96` |  | `009A` |
-| `FFC6C0` | WAVESAMPLE INFORMATION | `069E` | `004B54` |  | `0100` |
+| `FFC696` | CREATE NEW WAVESAMPLE | `16B6` | `FF4C28` |  | `0099` |
+| `FFC6A4` | COPY WAVESAMPLE | `16D6` | `FF4C6E` |  | `019B` |
+| `FFC6B2` | DELETE WAVESAMPLE | `16DC` | `FF4C96` |  | `009A` |
+| `FFC6C0` | WAVESAMPLE INFORMATION | `069E` | `FF4B54` |  | `0100` |
 | `FFC6CE` | TRUNCATE WAVESAMPLE | `06AC` | `FFE7D2` | 1 | `909E` |
 | `FFC6DC` | CROSS FADE LOOP | `06F4` | `FFF368` | 1 | `92A6` |
 | `FFC6EA` | REVERSE CROSS FADE | `0710` | `FFF46C` | 1 | `92A9` |
@@ -67,7 +67,7 @@ Generated with `python3 tools/bootrom.py commands build/bootrom/eps_boot_200.bin
 | `FFC722` | MAKE LOOP LONGER | `0720` | `FFF502` | 1 | `92AC` |
 | `FFC730` | SYNTHESIZED LOOP | `0752` | `FFF8C8` | 1 | `92C2` |
 | `FFC73E` | CONVERT SAMPLE RATE | `0702` | `FFF08E` | 1 | `9200` |
-| `FFC74C` | COPY WAVE PARAMETERS | `15FA` | `004AF4` |  | `0100` |
+| `FFC74C` | COPY WAVE PARAMETERS | `15FA` | `FF4AF4` |  | `0100` |
 | `FFC75A` | NORMALIZE GAIN | `06EE` | `FFE714` | 1 | `90C1` |
 | `FFC768` | VOLUME SMOOTHING | `074C` | `FFEF34` | 1 | `91AF` |
 | `FFC776` | MIX WAVESAMPLES | `073A` | `FFEC30` | 1 | `912D` |

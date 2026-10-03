@@ -27,7 +27,8 @@ ROM_BASE = 0xC00000
 OS_BASE = 0xFF2000
 # Command records in OS 2.49: 14 bytes each, from CMD_TABLE while the message
 # word is a valid message: handler.w, message.w, flags.w, 3 x button handler.w,
-# 0. Handler words are absolute short addresses (>= 0x8000 -> 0xFFxxxx).
+# 0. Handler words are absolute short addresses. The OS runs in user mode,
+# where 0x000000-0x00FFFF mirrors OS RAM, so every handler is 0xFF0000 | word.
 # Flags bits 15-12 = 8 + overlay number for handlers in the 0xFFE000 window.
 CMD_TABLE = 0xFFC43C
 CMD_SIZE = 14
@@ -125,7 +126,7 @@ def main():
         a = CMD_TABLE
         while is_msg(rom, w(a + 2), strict=False):
             h, m, f = w(a), w(a + 2), w(a + 4)
-            handler = h | 0xFF0000 if h & 0x8000 else h
+            handler = 0xFF0000 | h
             ovl = str((f >> 12) - 8) if f & 0x8000 and handler >= 0xFFE000 else ""
             print(f"| `{a:06X}` | {is_msg(rom, m, False).strip()} | `{m:04X}` | "
                   f"`{handler:06X}` | {ovl} | `{f:04X}` |")

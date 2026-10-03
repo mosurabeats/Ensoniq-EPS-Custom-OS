@@ -48,6 +48,16 @@ python3 tools/bootrom.py annotate build/bootrom/eps_boot_200.bin build/eps_os_24
 python3 tools/bootrom.py commands build/bootrom/eps_boot_200.bin build/eps_os_249.bin   # docs/COMMANDS.md
 ```
 
+## Tests
+
+```sh
+pip install unicorn
+python3 -m unittest discover tests     # needs build/ OS + boot ROM
+```
+
+`tools/emu.py` runs OS routines and our hooks in a 68000 emulator. See
+docs/ANALYSIS.md → Emulator tests.
+
 ## Building a hook
 
 ```sh

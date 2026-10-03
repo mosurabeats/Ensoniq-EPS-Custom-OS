@@ -98,7 +98,7 @@ base, `+42/+44` start-queue links, `+150/+152` level.
 | `0xFFAF54` | Allocate a voice for a layer (poly): retrigger the same key, else free list, else steal |
 | `0xFFB046` | Allocate for mono/legato layers |
 | `0xFFAEAC` | Note-off: walks the active list by key, releases via `0xFFB136` |
-| `0xFFB7C2` | Fast-kill a voice (used when stealing); sets state 8 |
+| `0xFFB7C2` | Fast-kill a voice (a4); sets state 8 and leaves it in its list. d4 = ramp rate 0–99 (read by ROM `0xC095D0`; the stealer passes 10). Changes d4/a1; saves d6/a0 only as words |
 | `0xFFB4E8` | Start a voice on OTIS: page select, start/end/loop from the wavesample block (`+240/+248/+256/+264` via `movep.l`), sample-start modulation (`+280…+284`) |
 | `0xFFBA92` | Drains the start queue `0xFF16E8` into `0xFFB4E8` |
 | `0xFFB65C` | Stop all voices |
@@ -241,8 +241,40 @@ Consequences:
 
 96 ticks per quarter note. `0xFF1602` = bar length (384 in 4/4).
 Time-signature and bar/beat/tick math is at `0xFF5A18–0xFF5AE0` (variables
-`0xFF803C` ticks per beat, `0xFF803E` beats, `0xFF8040` signature). The
-record-time quantize ("auto-correct") routine is not found yet.
+`0xFF803C` ticks per beat, `0xFF803E` beats, `0xFF8040` signature). There is
+no record-time quantize text in the ROM; QUANTIZE TRACK seems to be the only
+quantize.
+
+**Track events** (decoded by the iterator `0xFF6792`, which calls a handler
+per event type from a table): variable length, first word's bits 11–4 = code.
+
+| Code | Type | Size | Notes |
+|---|---|---|---|
+| 0–87 | 0 | 2 words | Note on, key = code. Delta = w0 bits 14–12 (high) + w1 bits 14–11 (low), 0–127 ticks. Velocity = w1 bits 10–4 |
+| 88–175 | 1 | 2 words | Probably note off, key = code − 88, same layout |
+| 176–183 | 2 | | |
+| 184 | 3 | 1 word | |
+| 185 | 4 | 2 words | |
+| 186 | 5 | 5 words | |
+| 187… | 6… | | |
+
+The iterator keeps its state at `0xFF8144` (`+2` event pointer, `+6` delta,
+`+8` first word, `+18` code, `+19` velocity). Longer gaps need other events,
+since a delta is at most 127 ticks.
+
+**QUANTIZE TRACK** (record `0xFFC4D6`, handler `0xFFED96`, overlay 0):
+* Grid = word table at ROM `0xC03F32` indexed by `0xFFE00C`:
+  48, 32, 24, 16, 12, 8, 6, 4, 3, 2 ticks (1/8 … 1/128T, "QUANTIZE TO 1/").
+* `0xFFEE26` aligns to the grid: `divu` gives step and remainder; the
+  remainder against grid/2 decides down or up, and sets the window
+  `0xFF804E`/`0xFF8050` (distance to the next half-grid boundary / grid line)
+  and the running position `0xFF804A`.
+* Per-event handlers come from the table at `0xFFEE68` (type 0 → `0xFFEEE0`,
+  most others → `0xFFEF08`). `0xFFEF1C…0xFFEFBE` advances the window by each
+  event's delta, adds `grid` each time a boundary is passed (`0xFFEF34`), and
+  moves notes by swapping event words and adjusting deltas.
+* Swing fits in that loop: alternate the boundary step between grid + offset
+  and grid − offset, starting from the step parity found at `0xFFEE26`.
 
 ### Where the interesting code is (by hardware references)
 
@@ -287,8 +319,20 @@ probably display graphics, not text).
 
 `0xFFC43C–0xFFC81D` in the OS holds 71 command records of 14 bytes:
 handler.w, message.w, flags.w, 3 × button handler.w, 0. Handler words are
-absolute short addresses (`0xE1EA` → `0xFFE1EA`; below `0x8000` → low RAM
-`0x00xxxx`). docs/COMMANDS.md lists them all (`tools/bootrom.py commands`).
+short addresses in OS RAM: the handler is `0xFF0000 | word` (see "User mode
+and the low mirror" below). docs/COMMANDS.md lists them all
+(`tools/bootrom.py commands`).
+
+### User mode and the low mirror
+
+The OS runs in **user mode**. MAME's `lower_r` maps `0x000000–0x00FFFF` to
+the boot ROM for supervisor accesses and to OS RAM (`0xFF0000+`) otherwise.
+So every short absolute address in the OS is OS RAM: `jsr $23FC` is
+`0xFF23FC` (`moveq #102,d2; trap #10`, a display call into the ROM), and
+`0x7F88` is `0xFF7F88` (CALIBRATE KEYBOARD). The OS reaches the ROM through
+`TRAP`s and `jmp $C0xxxx`. This also explains the "first 512 bytes" puzzle
+above: the boot ROM writes that block, and code reaches it through the
+mirror.
 
 For handlers in the overlay window, **flags bits 15–12 = 8 + overlay
 number**: `0x8…` = overlay 0 (sequencer commands, e.g. QUANTIZE TRACK at
@@ -325,6 +369,21 @@ Descriptors at ROM `0xC028DC`: display handler, RAM variable, message, word:
    dispatcher (flags → overlay) and how the low-RAM handler addresses
    (`0x4B54`, `0x7F88` …) get filled.
 6. ~~**XR-1008 clock-to-cutoff ratio.**~~ 50:1, from the ROM's cutoff labels.
+
+## Emulator tests
+
+`tools/emu.py` runs OS code in Unicorn (68000), with the boot ROM at
+`0xC00000`, the OS at `0xFF2000`, an overlay in the window, and OS RAM also
+mapped at `0x000000` (user-mode mirror) and `0xFFFF0000` (24-bit bus).
+Hardware registers are plain RAM. No floppy, panel or timing, so it tests
+routines, not the machine. `python3 -m unittest discover tests` runs:
+
+* `tests/test_mutegroup.py`: the mute hook calling the real OS voice kill
+  (and its ROM routine) on hand-built voice lists, plus a check that the
+  patched note-on entry leaves every register as stock does. These caught two
+  bugs: the kill's word-sized `movem` sign-extends d6, and `moveq` cleared
+  d0's upper word.
+* `tests/test_swing.py`: the reference swing math in `tools/swing.py`.
 
 ## Reproducing
 

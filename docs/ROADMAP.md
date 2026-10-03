@@ -18,18 +18,22 @@ That gives MPC-style mute groups between instruments (open and closed hats on
 two instruments), and a chopped break on one instrument becomes mono, with each
 slice cutting the last. Voices still in their release tail are cut too.
 
-**Implementation:** written, but not yet tested or placed in memory
-(`src/mutegroup.s`, 108 bytes):
+**Implementation:** `src/mutegroup.s`, 98 bytes (90 code + 8-byte table),
+**passing in the emulator** (`tests/test_mutegroup.py`, real OS voice kill),
+not yet placed in memory or tried on hardware:
 * Hook: per-instrument note-on at `0xFFACA4` (D5 = instrument). The first
   8 bytes become `jsr mute_hook` + `nop`, and the hook runs the displaced
-  instructions itself.
+  instructions itself. The test checks that every register leaves the
+  patched entry exactly as it leaves the stock one.
 * Walks the OS voice lists (active `0xFF16E4`, releasing `0xFF16DC`) and
-  calls the OS's own voice-steal kill (`0xFFB7C2`, rate 10) on matching voices.
-* The group table is 8 bytes.
+  calls the OS's own voice-steal kill (`0xFFB7C2`) with the stealer's rate
+  (d4 = 10) on matching voices.
+* Two instruments in the same group struck by the same key: only the later
+  one sounds (it cuts the other's voices before they start), as on an MPC.
 
 | Step | What | Status |
 |---|---|---|
-| v1 | Groups set at build time: `mkhook.py --set mute_table=0101…` | needs a code location |
+| v1 | Groups set at build time: `mkhook.py --set mute_table=0101…` | emulator-tested; needs a code location |
 | v2 | Edit the group on the instrument page from the front panel | needs the display/parameter system decoded |
 | v3 | Save the group with the instrument file (spare header byte) | needs the instrument format mapped |
 
@@ -92,30 +96,45 @@ they live in the sampling overlay, they need no resident space.
 **True bypass (optional hardware mod):** a switch that routes the signal
 around the XR-1008.
 
-### 3. Sequencer: MPC-style swing and quantize
+### 3. Sequencer: MPC60 / MPC3000 / SP-1200 swing
 
-**Behaviour:**
-* **Quantize** (the EPS "auto-correct") to 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32,
-  with **swing 50–75%** on 1/8 and 1/16. Every second grid step is delayed by
-  `(swing − 50)/50 × grid`, like the MPC.
-* Applied when recording, as the MPC does, plus a **TIMING CORRECT** command
-  that quantizes and swings an already recorded track, with a strength setting
-  (50–100%) so it doesn't sound robotic.
-* Possible later step: non-destructive playback swing per track.
+**Behaviour:** QUANTIZE TRACK gets a swing setting for 1/8 and 1/16, plus a
+strength (50–100%, MPC timing-correct style). Every second grid step (the
+even 8ths/16ths) moves later. The EPS runs at 96 PPQN, like the MPC60 and
+MPC3000, so their swing is reproduced tick for tick:
 
-**What we know:** the sequencer runs at 96 ticks per quarter note. Bar length
-is in `0xFF1602` (384 for 4/4). The time-signature and bar/beat math is at
-`0xFF5A18–0xFF5AE0` (variables around `0xFF803C–0xFF8046`).
+| Style | Settings | 1/16 offset (ticks) | Source of the numbers |
+|---|---|---|---|
+| MPC60 / MPC3000 | 50–75% | round(48 × % / 100) − 24: 54% → 2, 58% → 4, 62% → 6, 66% → 8, 71% → 10, 75% → 12 | Linn's definition (share of the 8th given to the first 16th). Rounding at 96 PPQN is our assumption |
+| SP-1200 | 50, 54, 58, 63, 67, 71% | 0, 2, 4, 6, 8, 10 (exact) | The labels are (12+k)/24 rounded: one-tick steps at the SP-1200's 48 PPQN |
 
-**QUANTIZE TRACK exists as a command** (record `0xFFC4D6`, message
-`0x0C78`, handler `0xFFED96` in overlay 0). That routine is where to start:
-it must walk the track events and round their times, so it shows the event
-format and is the natural place to add swing and strength. See
-docs/COMMANDS.md for the other sequencer commands (SHIFT TRACK BY CLOCKS,
-EVENT EDIT TRACK, …).
+1/8 offsets are twice as large (1/8 at 66% = +15, SP-1200 = 0, 4 … 20).
+`tools/swing.py` is the reference (tested in `tests/test_swing.py`); the
+68000 code will be tested against it. The MPC60 and MPC3000 define swing
+the same way (both Linn designs at 96 PPQN), so they are one style here.
 
-**Still to find:** the record-time quantize (auto-correct) routine and the
-track event format.
+Quantize snaps to the nearest line of the *swung* grid, so a note played
+late on a swung 16th stays on it instead of jumping to the next beat.
+
+**Where it goes:** QUANTIZE TRACK (record `0xFFC4D6`, handler `0xFFED96`,
+overlay 0) already walks the track with a sliding window of grid boundaries
+(ANALYSIS.md → Sequencer). Swing = alternate the boundary step between
+grid + offset and grid − offset, starting from the step parity found when it
+aligns to the grid (`0xFFEE26`). Strength = move each note part of the way.
+Overlay 0 is full, so the new code needs space (see below) and a jump in.
+
+**Steps**
+
+| Step | What | Status |
+|---|---|---|
+| a | Reference math for the three styles | done (`tools/swing.py`) |
+| b | Event format and the quantize loop decoded | partly (ANALYSIS.md → Sequencer) |
+| c | Run the stock QUANTIZE TRACK in the emulator on a test track; compare with `tools/swing.py` at 50% | next |
+| d | Swing patch, style/amount set at build time (`--set`, like mute groups v1); emulator tests per style | |
+| e | Front-panel setting (a second prompt after "QUANTIZE TO 1/") | needs the display routines |
+
+The EPS has no record-time quantize to extend (no such text in the ROM), so
+swing-on-record would be new code. It comes after the command works.
 
 ## Shared blocker: space for new code
 
@@ -166,10 +185,10 @@ expanded unit.
 | M1 | Memory layout: resident part, overlays, stack, voice engine | **done** (see ANALYSIS.md) |
 | M2 | MIDI-out debug patch on hardware: dump sample bounds and memory size from an expanded EPS | next |
 | M2b | Code location for resident hooks (sample RAM reservation or a freed routine) | |
-| M3 | Mute groups v1 (groups set at build time) on hardware | hook written |
+| M3 | Mute groups v1 (groups set at build time) on hardware | emulator-tested; needs a code location |
 | M4 | Display/parameter system decoded; mute group editable from the panel | messages + commands decoded from the boot ROM |
 | M5 | Filter probe on hardware → filter OUT | try stock 20.0 KHZ first; 16 probe disks ready |
-| M6 | Quantize + swing at record time; TIMING CORRECT | |
+| M6 | MPC/SP-1200 swing in QUANTIZE TRACK | reference math done; quantize loop being decoded |
 | M7 | Mute group saved with the instrument | |
 
 ## Testing
@@ -178,3 +197,12 @@ There is no working emulator (MAME's EPS driver doesn't boot), so each step
 needs a hardware test. The fastest loop is a Gotek with FlashFloppy:
 `epstool.py replace stock.ede 0 patched.bin test.img`, copy it to USB, and
 power-cycle. A bad OS just fails to boot; the stock disk always recovers.
+
+Before hardware, `python3 -m unittest discover tests` runs our code against
+real OS routines in a 68000 emulator (`tools/emu.py`, ANALYSIS.md → Emulator
+tests). It catches register and logic bugs, not timing or hardware ones.
+
+A full MAME setup would also test booting, overlays and the panel. That means
+building MAME's `esq5505` driver and finding why the EPS doesn't boot there
+(it's marked not working). Worth doing once the two features are on
+hardware, or in parallel.
