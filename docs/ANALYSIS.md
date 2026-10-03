@@ -41,44 +41,100 @@ unit.** Power off, insert a stock OS disk, and you're back.
 | `0xC00000–0xC0FFFF` | Boot ROM. The OS calls into it about 290 times with `jsr abs.l` |
 | `0xFF0000–0xFFFFFF` | OS RAM |
 
-### Load address: 0xFF2000 (confirmed for the first 56 KB)
+### OS layout: resident part + 8 KB overlays
+
+| File offset | Loaded at | What |
+|---|---|---|
+| `0x00000–0x0BFFF` | `0xFF2000–0xFFDFFF` | Resident OS. Header pointer table at file 0x146 |
+| (none) | `0xFF0000–0xFF1FFF` | OS variables, also reachable as `0x0000–0x1FFF` (abs.w) |
+| (none) | `0xFFDF80–0xFFDFFF` | Stack (zeroed in the image), top at `0xFFE000` |
+| `0x0C000` | `0xFFE000–0xFFFFFF` | Overlay 0 (in RAM at boot) |
+| `0x0E000` | `0xFFE000` window | Overlay 1 |
+| `0x10000` | `0xFFE000` window | Overlay 2 (disk utilities: COPY FLOPPY, BACKUP, SCSI…) |
+| `0x12000` | `0xFFE000` window | **Overlay 3: empty (all `6D B6`), free for our code** |
+| `0x14000` | ? | 3.5 KB. Calls only resident code; role unknown |
 
 Evidence:
-* Short-absolute calls (`jsr $xxxx.w`, about 2,000 of them) whose targets fall in
-  `0x0000–0xBFFF` land right after an `rts` far more often when file offset =
-  address − 0x2000 than at any other base.
-* The pointer table at file offset 0x146 holds addresses like `0xFFC960` and
-  `0xFF964A`. At base 0xFF2000 the code pointers land on routine entries (right
-  after `rts`) and the data pointers land on zeroed variables.
+* Short-absolute calls into `0x2000–0xBFFF` land right after an `rts` far
+  more often at base 0xFF2000 than at any other base. The header pointer
+  table lands on routine entries and zeroed variables at that base.
+* For each 8 KB chunk from file 0xC000 on, calls into `0xFFE000+` only make
+  sense if *that chunk* is what's in the window: 27/56, 41/75 and 23/35 hits,
+  against 3/75 and 5/35 if the file were contiguous.
+* The overlay loader at `0xFF4E40` (D1 = overlay number) reads from the
+  **OS disk** into `0xFFE000`, retries with an "insert disk" prompt, and
+  records the current overlay in `0xFFC8D0`. Callers pass 0, 2, or a stored
+  number.
+* Stack switches load `#0xE000` as SP (`0xFF85CE`, `0xFF8610`).
+* The OS checks the boot ROM version word at `0xC00134` (compares it with
+  `0x0114`).
 
-Still open:
-1. **Where the tail of the file goes.** At 0xFF2000 only 0xE000 bytes fit
-   below 0xFFFFFF, but the file is 0x14E00 bytes and has code all the way to the
-   end. Either some segments are copied or relocated at boot, or the EPS has
-   more OS RAM than MAME maps. Calls into `0xFFC000–0xFFFFFF` don't fit
-   base 0x2000 well, which suggests a RAM jump table or overlay there.
-   Tracing the boot ROM's loader would answer this. That needs a dump of the
-   `eps-l`/`eps-h` boot ROMs, which an owner can read from their own unit.
-2. **The 8 KB block of `6D B6` at file offset 0x12000–0x13FFF.** This
-   looks like a hole in the image (probably uninitialised RAM / BSS). If the OS
-   doesn't use it at runtime, it is the obvious place for custom code.
-3. **UI text is not stored as plain ASCII.** Only a few disk-utility strings
-   (`COPY FLOPPY`, `BACKUP`, `RESTORE`, `INTERLEAVE`…) are readable. The main
-   parameter and page names (TRUNCATE, LAYER, etc.) must be encoded or
-   tokenised. Finding the display routine and its text format is needed before
-   any new page or prompt can be added.
+`tools/epstool.py info` prints this layout, `tools/disasm.sh OS.bin [N]`
+disassembles the resident part or overlay N at the right address, and patch
+edits take `"overlay": N` for window addresses.
+
+### Voice engine (resident)
+
+| Address | What |
+|---|---|
+| `0xFF0940` | Voice records, 154 (0x9A) bytes each; count−1 in `0xFF16EC` |
+| `0xFF16D8` | Free voice list (circular, sentinel = list head) |
+| `0xFF16DC` | Releasing voices |
+| `0xFF16E4` | Active (held) voices |
+| `0xFF16E8` | Queue of voices waiting to start |
+| `0xFFDF70` | Instrument pointer table (8 entries) |
+| `0xFF16BA/BB` | Incoming note (key in BB), `0xFF16B6` velocity, `0xFF16BD` mask of instruments to play |
+| `0xFF16BE` | Key after transpose, clamped 21–108 |
+
+Voice record fields: `+0/+2` list links, `+4` key, `+6` instrument,
+`+7` layer, `+10` pointer, `+12` state (0 idle, 4 held, 8 being killed,
+10 start pending), `+16` layer ptr, `+22` wavesample params, `+26` sample
+base, `+42/+44` start-queue links, `+150/+152` level.
+
+| Routine | What |
+|---|---|
+| `0xFFACA4` | Note-on for one instrument (D5 = instrument); loops over its 8 layers |
+| `0xFFAF54` | Allocate a voice for a layer (poly): retrigger the same key, else free list, else steal |
+| `0xFFB046` | Allocate for mono/legato layers |
+| `0xFFAEAC` | Note-off: walks the active list by key, releases via `0xFFB136` |
+| `0xFFB7C2` | Fast-kill a voice (used when stealing); sets state 8 |
+| `0xFFB4E8` | Start a voice on OTIS: page select, start/end/loop from the wavesample block (`+240/+248/+256/+264` via `movep.l`), sample-start modulation (`+280…+284`) |
+| `0xFFBA92` | Drains the start queue `0xFF16E8` into `0xFFB4E8` |
+| `0xFFB65C` | Stop all voices |
+
+### Sequencer (partial)
+
+96 ticks per quarter note. `0xFF1602` = bar length (384 in 4/4).
+Time-signature and bar/beat/tick math is at `0xFF5A18–0xFF5AE0` (variables
+`0xFF803C` ticks per beat, `0xFF803E` beats, `0xFF8040` signature). The
+record-time quantize ("auto-correct") routine is not found yet.
 
 ### Where the interesting code is (by hardware references)
 
 | File offset page | Touches | Probably |
 |---|---|---|
-| 0x9000, 0x10000 | OTIS voice regs | Voice start/stop and allocation. **Mute groups hook here** |
+| 0x8000–0x9FFF (resident) | OTIS voice regs | Voice engine, mapped above |
+| 0x10000 (overlay 2) | OTIS, DUART, DMAC | Disk/utility overlay code |
 | 0xB000, 0x11000 | FDC + DMAC | Disk I/O |
 | 0x6000–0x7000, 0x10000 | DUART | Front panel / keyboard / MIDI |
 | 0x6000, 0xB000 | Many boot-ROM calls | UI and disk layers |
 
 The OS uses 68000 `TRAP #0–#15` (about 218 sites) as a system-call layer,
 probably into the boot ROM.
+
+### Open questions
+
+1. **Display text format.** Only a few disk-utility strings (`COPY FLOPPY`,
+   `BACKUP`, `RESTORE`, `INTERLEAVE`, `COPY OS TO SCSI DRIVE?`) are plain
+   ASCII, and all of them are in overlay 2. Parameter and page names
+   (TRUNCATE, LAYER…) must be encoded or tokenised. Finding them is needed
+   before adding pages or parameters.
+2. **Free resident space** for real-time hooks. None found yet (see
+   ROADMAP.md).
+3. **How overlay numbers map to disk blocks.** The loader computes
+   `d3 = n + 7` before the read, so the unit isn't confirmed yet. We need to
+   confirm the OS will load overlay 3 when asked.
+4. **The 3.5 KB chunk at file 0x14000.**
 
 ## Reproducing
 

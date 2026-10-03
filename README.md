@@ -32,3 +32,14 @@ which catches a wrong OS version.
 Ensoniq's OS binaries and disk images are not committed (see `.gitignore`).
 Put your own copy of `eps249os.ede` in `build/`. The steps to get it from the
 Chicken Systems installer are in docs/ANALYSIS.md.
+
+## Building a hook
+
+```sh
+# assemble src/mutegroup.s into a code cave and hook the note-on routine
+python3 tools/mkhook.py src/mutegroup.s build/eps_os_249.bin \
+    --org <CAVE_ADDR> --hook 0xFFACA4 --len 8 --entry mute_hook \
+    --set mute_table=0101000000000000 -o patches/mutegroup.json
+```
+
+The code-cave address is still open. See docs/ROADMAP.md.

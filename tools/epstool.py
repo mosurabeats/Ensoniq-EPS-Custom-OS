@@ -32,7 +32,25 @@ FAT_START = 5           # FAT: 3-byte big-endian entries, 170 per block
 FAT_PER_BLOCK = 170
 FAT_EOF = 1
 
-OS_LOAD_ADDR = 0xFF2000  # where the OS file is linked (see docs/ANALYSIS.md)
+# OS file layout (see docs/ANALYSIS.md): file 0x0000-0xBFFF is resident at
+# 0xFF2000-0xFFDFFF; the rest is 8 KB overlays that the OS reads from the OS
+# disk into the window at 0xFFE000-0xFFFFFF on demand (overlay 0 at 0xC000).
+OS_LOAD_ADDR = 0xFF2000
+RESIDENT_END = 0xFFE000
+OVERLAY_WINDOW = 0xFFE000
+OVERLAY_FILE_BASE = 0xC000
+OVERLAY_SIZE = 0x2000
+
+
+def addr_to_offset(addr, overlay=None):
+    """CPU address (+ overlay number for the 0xFFE000 window) -> file offset."""
+    if overlay is not None:
+        if not OVERLAY_WINDOW <= addr < OVERLAY_WINDOW + OVERLAY_SIZE:
+            sys.exit(f"{addr:#x} is outside the overlay window")
+        return OVERLAY_FILE_BASE + overlay * OVERLAY_SIZE + addr - OVERLAY_WINDOW
+    if not OS_LOAD_ADDR <= addr < RESIDENT_END:
+        sys.exit(f"{addr:#x} is not resident; give \"overlay\" for 0xFFE000+")
+    return addr - OS_LOAD_ADDR
 
 FILE_TYPES = {1: "OS", 2: "DIR", 3: "INST", 4: "BANK", 5: "SEQ", 6: "SONG",
               7: "SYSEX", 8: "PARENT", 9: "MACRO"}
@@ -180,17 +198,17 @@ def replace_file(img, index, data):
 # ------------------------------------------------------------------ patches
 
 def apply_patch(os_bin, patch):
-    """patch = {"name":..., "base": "0xFF2000", "edits":[{"addr","expect","data"}]}
+    """patch = {"name":..., "edits":[{"addr","expect","data"[,"overlay"]}]}
 
-    `addr` is a CPU address; `expect` and `data` are hex strings. Every
+    `addr` is a CPU address (add "overlay": n for addresses in the 0xFFE000
+    overlay window); `expect` and `data` are hex strings. Every
     `expect` must match before anything is written, so a patch made for one
     OS version refuses to apply to another.
     """
-    base = int(patch.get("base", hex(OS_LOAD_ADDR)), 16)
     out = bytearray(os_bin)
     edits = []
     for ed in patch["edits"]:
-        off = int(ed["addr"], 16) - base
+        off = addr_to_offset(int(ed["addr"], 16), ed.get("overlay"))
         exp = bytes.fromhex(ed["expect"])
         new = bytes.fromhex(ed["data"])
         if out[off:off + len(exp)] != exp:
@@ -251,18 +269,14 @@ def main():
         print(f"applied {patch.get('name', args.patch)}: {len(patch['edits'])} edits")
     elif args.cmd == "info":
         d = open(args.os, "rb").read()
-        print(f"size {len(d)} bytes ({(len(d) + 511) // 512} blocks), first "
-              f"{0x1000000 - OS_LOAD_ADDR:#x} bytes linked at {OS_LOAD_ADDR:#x}")
-        run = start = None
-        for i in range(0, len(d) - 1, 2):
-            if d[i:i + 2] == b"\x6d\xb6":
-                if start is None:
-                    start = i
-            else:
-                if start is not None and i - start >= 1024:
-                    print(f"fill-pattern hole: file {start:#x}..{i - 1:#x} "
-                          f"({i - start} bytes)")
-                start = None
+        print(f"size {len(d)} bytes ({(len(d) + 511) // 512} blocks)")
+        print(f"resident  file 0x0000-{OVERLAY_FILE_BASE - 1:#06x} -> "
+              f"{OS_LOAD_ADDR:#x}-{RESIDENT_END - 1:#x}")
+        for n, off in enumerate(range(OVERLAY_FILE_BASE, len(d), OVERLAY_SIZE)):
+            chunk = d[off:off + OVERLAY_SIZE]
+            state = "empty (6DB6 fill)" if chunk == FILL[:2] * (len(chunk) // 2) else \
+                f"{len(chunk)} bytes"
+            print(f"overlay {n} file {off:#07x} -> {OVERLAY_WINDOW:#x}: {state}")
 
 
 if __name__ == "__main__":
