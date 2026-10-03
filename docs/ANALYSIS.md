@@ -52,7 +52,7 @@ unit.** Power off, insert a stock OS disk, and you're back.
 | `0x0E000` | `0xFFE000` window | Overlay 1 |
 | `0x10000` | `0xFFE000` window | Overlay 2 (disk utilities: COPY FLOPPY, BACKUP, SCSI…) |
 | `0x12000` | `0xFFE000` window | **Overlay 3: empty (all `6D B6`), free for our code** |
-| `0x14000` | ? | 3.5 KB. Calls only resident code; role unknown |
+| `0x14000` | `0xFFE000` window (at boot) | **Boot/init code** (3.4 KB, ~4.5 KB of the 8 KB slot unused): runs the init routines, ROM version check, sample-buffer setup |
 
 Evidence:
 * Short-absolute calls into `0x2000–0xBFFF` land right after an `rts` far
@@ -154,7 +154,7 @@ probably into the boot ROM.
 3. **How overlay numbers map to disk blocks.** The loader computes
    `d3 = n + 7` before the read, so the unit isn't confirmed yet. We need to
    confirm the OS will load overlay 3 when asked.
-4. **The 3.5 KB chunk at file 0x14000.**
+4. **How the boot code at file 0x14000 gets into the window**, and whether the loader always reads a full 8 KB (needed before appending code to it).
 
 ## Reproducing
 
