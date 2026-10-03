@@ -39,7 +39,7 @@ class CodeAreaTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.os_bin = open(OS, "rb").read()
-        cls.patch, cls.info = mkcodearea.build(cls.os_bin, [1, 1, 0, 0, 2, 0, 0, 0])
+        cls.patch, cls.info = mkcodearea.build(cls.os_bin, "1:C2=1,1:D2=1,2=1,5=2")
         cls.code = bytes.fromhex(cls.patch["edits"][0]["data"])
         cls.off = cls.info["payload_offsets"]
 
@@ -75,7 +75,7 @@ class CodeAreaTest(unittest.TestCase):
                 allowed = set(range(HOOK_SITE, HOOK_SITE + 8))
                 for v in BOUNDS:
                     allowed |= set(range(v, v + 4))
-                allowed |= set(range(0xFFDE00, 0xFFDF80))      # stack scratch
+                allowed |= set(range(0xFFDE00, 0xFFE000))      # stack scratch (OS stack 0xFFDF80-0xFFDFFF)
                 diff = [0xFF0000 + i for i in range(0x10000) if a[i] != b[i]]
                 extra = [hex(x) for x in diff if x not in allowed]
                 self.assertEqual(extra, [], "staging not cleared or other RAM changed")
@@ -99,9 +99,16 @@ class CodeAreaTest(unittest.TestCase):
     def test_mute_groups_through_installed_hook(self):
         """Note-on through the patched entry: groups choke, registers as stock."""
         def setup(eps):
+            for i in range(8):                     # loaded instruments, no transpose
+                rec = 0xFFCE00 + 0x40 * i
+                eps.ww(0xFFDF70 + 2 * i, rec)
+                eps.ww(rec, 0x1234)
+                eps.wb(rec + 62, 0)
+            eps.wb(0xFF16BB, 38)                   # incoming key D2
             vs = []
-            for i, inst in enumerate([0, 1, 4, 4, 2]):
+            for i, (inst, key) in enumerate([(0, 36), (1, 60), (4, 50), (4, 51), (2, 60), (0, 40)]):
                 v = VOICES + i * VSIZE
+                eps.wb(v + 4, key)
                 eps.wb(v + 6, inst)
                 eps.wb(v + 12, 4)
                 vs.append(v)
@@ -120,11 +127,11 @@ class CodeAreaTest(unittest.TestCase):
             ("d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",
              "a0", "a1", "a2", "a3", "a4", "a5", "a6"))}
         regs["d5"] = 0                                             # instrument 1
-        r1 = ours.run_until(HOOK_SITE, AFTER_SITE, **regs)       # instrument 1, group 1
+        r1 = ours.run_until(HOOK_SITE, AFTER_SITE, **regs)       # inst 1, D2: group 1
         r2 = stock.run_until(HOOK_SITE, AFTER_SITE, **regs)
         self.assertEqual(r1, r2)
         killed = sorted(0xFF0000 | (r["a4"] & 0xFFFF) for a, r in ours.calls if a == VOICE_KILL)
-        self.assertEqual(killed, [vs[0], vs[1]])                  # instruments 1 and 2
+        self.assertEqual(killed, [vs[0], vs[1]])     # inst 1 C2 and all of inst 2, not inst 1 E2
 
 
 if __name__ == "__main__":

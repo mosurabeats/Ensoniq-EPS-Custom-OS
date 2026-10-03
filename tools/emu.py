@@ -62,7 +62,7 @@ EXPANDERS = {               # sample RAM present for each memory config
     "4x": [(0x580000, 0x280000)],
 }
 STOP = 0x100000          # return address that ends a call()
-STACK_TOP = 0xFFDF7C     # just under the OS stack area (0xFFDF80-0xFFDFFF)
+STACK_TOP = 0xFFE000     # the OS stack: 0xFFDF80-0xFFDFFF (0xFFDF70 = instrument table)
 
 
 class EmuError(Exception):

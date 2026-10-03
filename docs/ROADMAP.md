@@ -9,33 +9,37 @@ is just "write a floppy or Gotek image and power on".
 
 ## Chosen features
 
-### 1. Mute groups (one group per instrument)
+### 1. Mute groups (per key)
 
-**Behaviour:** each of the 8 instruments gets a mute group: OFF or 1–8.
-When an instrument in group G plays a note, every sounding voice of any
-instrument in group G is cut, including the instrument's own other keys.
-That gives MPC-style mute groups between instruments (open and closed hats on
-two instruments), and a chopped break on one instrument becomes mono, with each
-slice cutting the last. Voices still in their release tail are cut too.
+**Behaviour:** every key of every instrument has a mute group: none or
+1–15. When a note starts on a key in group G, every sounding voice whose own
+(instrument, key) is in group G is cut, including voices in their release
+tail. So kick and snare on two keys of one kit instrument can cut each
+other while the hats use another group; groups also work across
+instruments; and a key in a group cuts itself when retriggered (MPC
+style). A chopped break with all its keys in one group plays mono.
 
-**Implementation:** `src/mutegroup.s`, 98 bytes (90 code + 8-byte table),
-**passing in the emulator** (`tests/test_mutegroup.py`, real OS voice kill),
-not yet placed in memory or tried on hardware:
+**Implementation:** `src/mutegroup.s`, 204 bytes of code + a 352-byte table
+(4 bits per instrument × key), in the code area. **Passing in the emulator**
+(`tests/test_mutegroup.py`, real OS voice kill), not yet on hardware:
 * Hook: per-instrument note-on at `0xFFACA4` (D5 = instrument). The first
   8 bytes become `jsr mute_hook` + `nop`, and the hook runs the displaced
-  instructions itself. The test checks that every register leaves the
-  patched entry exactly as it leaves the stock one.
-* Walks the OS voice lists (active `0xFF16E4`, releasing `0xFF16DC`) and
-  calls the OS's own voice-steal kill (`0xFFB7C2`) with the stealer's rate
-  (d4 = 10) on matching voices.
+  instructions itself; every register leaves the patched entry as it leaves
+  the stock one (tested).
+* Key = incoming key (`0xFF16BB`) + the instrument's transpose, clamped to
+  21–108, exactly as the OS computes the voice's key (`+4`). MIDI note
+  numbers: 21 = A0, 60 = C4 (middle C), 108 = C8.
+* Walks the active (`0xFF16E4`) and releasing (`0xFF16DC`) voice lists and
+  calls the OS's voice-steal kill (`0xFFB7C2`, rate 10) on matching voices.
+  Constant-time group lookup, so no extra latency with many voices.
 * Two instruments in the same group struck by the same key: only the later
-  one sounds (it cuts the other's voices before they start), as on an MPC.
+  one sounds, as on an MPC.
 
 | Step | What | Status |
 |---|---|---|
-| v1 | Groups set at build time: `mkcodearea.py --groups 1,1,2,0,0,0,0,0` | emulator-tested in the code area; **hardware test 1** |
-| v2 | Edit the group on the instrument page from the front panel | needs the display/parameter system decoded |
-| v3 | Save the group with the instrument file (spare header byte) | needs the instrument format mapped |
+| v1 | Groups set at build time: `mkcodearea.py --groups "1:C2=1,1:D2=1,1:F#2-A#2=2"` (instrument:keys=group; `I=G` for a whole instrument) | emulator-tested; **hardware test 1** |
+| v2 | Edit the group per wavesample/key from the front panel | needs the parameter system decoded |
+| v3 | Save it with the instrument (spare wavesample byte); CHOP sets it for all slices | needs the wavesample format (same work as CHOP) |
 
 ### 2. Anti-aliasing filter OUT when sampling
 
@@ -165,7 +169,7 @@ instruments with per-key wavesamples.
 | 7 | Note repeat while recording (held key repeats at the grid, swung) | rolls | code area, sequencer clock |
 | 8 | Very last: sampling crunch (stock FILTER CUTOFF 20.0 KHZ at low rates first, then filter OUT), S900 filter, render effects | tone | overlay 2 / 3 |
 
-The code area is 1 KB (120 bytes used). If 2–7 outgrow it, the reserve can
+The code area is 1 KB (556 bytes used by per-key mute groups). If 2–7 outgrow it, the reserve can
 grow (a constant in `src/codearea.s`) at the cost of sample memory.
 
 ### 5. CHOP: automatic non-destructive chopping
@@ -266,7 +270,7 @@ Resident RAM (`0xFF1600–0xFFDFFF`) is full. Our resident code now lives in
 the **top 1 KB of sample RAM**, reserved at boot (ANALYSIS.md → Code area;
 `src/codearea.s`, `tools/mkcodearea.py`). The payload is position
 independent; the installer writes the hook jumps for whichever expander is
-fitted. Cost: 1 KB of sample memory. Mute groups use 120 bytes of it so far.
+fitted. Cost: 1 KB of sample memory. Mute groups use 556 bytes of it (most of that is the per-key table).
 
 | Status | |
 |---|---|

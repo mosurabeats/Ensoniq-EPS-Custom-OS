@@ -19,7 +19,7 @@ Build the disks yourself with:
 ```sh
 tools/fetch.sh os                       # stock OS 2.49 (build/hfe/EPS249OS.hfe)
 python3 tools/mkcodearea.py build/eps_os_249.bin -o build/test/codearea_mute.json \
-    --groups 1,1,2,0,0,0,0,0 --disk build/hfe/EPS249OS.hfe build/test/EPS249_MUTETEST.hfe
+    --groups "1=1,2:A0-B3=2,3=1" --disk build/hfe/EPS249OS.hfe build/test/EPS249_MUTETEST.hfe
 ```
 
 ## Test 1: code area + mute groups (`EPS249_MUTETEST`)
@@ -27,14 +27,15 @@ python3 tools/mkcodearea.py build/eps_os_249.bin -o build/test/codearea_mute.jso
 **What it checks:** that the EPS can run our code from the top 1 KB of
 sample RAM (the code area), and that mute groups work there.
 
-The disk is stock OS 2.49 plus the code area, with mute groups:
+The disk is stock OS 2.49 plus the code area, with per-key mute groups set
+so that any sounds work (middle C = C4):
 
-| Instrument | Group | Expected |
-|---|---|---|
-| 1 | 1 | a note on 1 or 2 cuts whatever 1 and 2 are playing (open/closed hat) |
-| 2 | 1 | |
-| 3 | 2 | a new note on 3 cuts 3's previous notes (mono, like a chopped break) |
-| 4–8 | none | normal |
+| Instrument | Keys | Group | Expected |
+|---|---|---|---|
+| 1 | all | 1 | every new note cuts the previous one (mono), even the same key again |
+| 2 | below middle C | 2 | the lower half is mono; the upper half plays normally (chords ring) |
+| 3 | all | 1 | shares group 1 with instrument 1: a note on 1 cuts 3 and vice versa |
+| 4–8 | | none | normal |
 
 **Steps**
 
@@ -43,16 +44,18 @@ The disk is stock OS 2.49 plus the code area, with mute groups:
    down. Boot the stock disk to recover.)
 2. Load a sound with a long release or loop (a pad, an open hi-hat) into
    instruments 1, 2 and 3, from your own disks.
-3. Instrument 1: hold a long note, then play a note on instrument 2. The
-   instrument 1 note should stop within a few milliseconds (the same fast
-   fade the EPS uses when it steals a voice).
-4. Instrument 3: play one note, then another key while the first still
-   sounds. The first should stop.
-5. Instruments 4–8 should behave exactly like the stock OS.
-6. Optional: sample something short and play it back. Sample memory is 1 KB
+3. Instrument 1: play a chord or two notes in a row. Only the last note
+   should sound; the earlier ones stop within a few milliseconds (the same
+   fast fade the EPS uses when it steals a voice).
+4. Instrument 2: chords below middle C collapse to one note; chords from
+   middle C up ring normally.
+5. Hold a long note on instrument 1, then play instrument 3: the instrument
+   1 note stops (and the other way round).
+6. Instruments 4–8 should behave exactly like the stock OS.
+7. Optional: sample something short and play it back. Sample memory is 1 KB
    smaller than stock, which should make no audible difference.
 
-**What to report:** did it boot (step 1), and steps 3–5 (works / doesn't /
+**What to report:** did it boot (step 1), and steps 3–6 (works / doesn't /
 anything odd: clicks, hangs, wrong voices cut). Also tell us whether you have
 a 2x or 4x memory expander, or none.
 
