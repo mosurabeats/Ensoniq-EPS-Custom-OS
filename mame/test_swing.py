@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Swing quantize of LOOPED takes on the whole emulated EPS (MAME).
 
-Stock vs --swing 16:mpc:58 --auto-keep, both with the TR 8O8 kit, running
+Stock vs --swing 16:mpc:58 --auto-keep (and the same with --pages, where it
+presets QUANTIZE and SWING% on the sequencer page), with the TR 8O8 kit, running
 mame/keys/loop_record.txt (kick, then snare and hat loop-recorded over 3
 passes plus a snare in the unfinished last pass). mame/takes.lua prints
 each take right after its wrap and the final take after STOP.
@@ -53,8 +54,10 @@ def on_grid(notes):
 def main():
     os.makedirs(T.OUT, exist_ok=True)
     disks = {"swing_stock": L.make_disk("swing_stock", None),
-             "swing_on": L.make_disk("swing_on", ["--swing", f"16:{STYLE}:{AMOUNT}", "--auto-keep"])}
-    with ThreadPoolExecutor(2) as ex:
+             "swing_on": L.make_disk("swing_on", ["--swing", f"16:{STYLE}:{AMOUNT}", "--auto-keep"]),
+             "swing_pages": L.make_disk("swing_pages", ["--pages", "--swing", f"16:{STYLE}:{AMOUNT}",
+                                                       "--auto-keep"])}
+    with ThreadPoolExecutor(3) as ex:
         res = dict(zip(disks, ex.map(lambda kv: run(*kv), disks.items())))
     ok = []
 
@@ -70,6 +73,9 @@ def main():
     check("swing: final take on the grid (STOP hook)", final is not None and on_grid(final))
     check("swing: the last-pass snare is in it", final is not None and len(final) > len(takes[-1]))
     check("stock: notes as played (off the grid)", s_final is not None and not on_grid(s_final))
+    p_takes, p_final = res["swing_pages"]
+    check("pages (QUANTIZE/SWING% on the sequencer page, preset 1/16 58%): final take on the grid",
+          p_final is not None and on_grid(p_final) and len(p_final) == len(final or []))
     print("swing final:", [(t, k) for t, k, *_ in final or []])
     print("stock final:", [(t, k) for t, k, *_ in s_final or []])
     sys.exit(0 if all(ok) else 1)

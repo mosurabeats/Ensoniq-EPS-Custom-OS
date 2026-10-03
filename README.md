@@ -67,6 +67,7 @@ tools/fetch.sh sounds && python3 mame/test_mutegroups.py   # mute groups with a 
 python3 mame/test_loop_record.py                         # loop recording, auto-keep
 python3 mame/test_swing.py                               # swing quantize of LOOPED takes
 python3 mame/test_undo.py                                # loop undo (RECORD while loop recording)
+python3 mame/test_panel.py                               # MUTE GROUP / QUANTIZE set from the panel
 ```
 
 `tools/epstool.py add OS.img SOUNDS.gkh 1 OUT.img` copies an instrument onto
@@ -84,11 +85,15 @@ python3 tools/mkcodearea.py build/eps_os_249.bin -o build/test/codearea_mute.jso
 
 Use `.img` instead of `.hfe` as the output name for a disk to boot in MAME.
 
-Options: `--groups` (mute groups), `--swing 16:mpc:58` or per instrument
-`1=16:mpc:58,2=8:sp1200:63` (quantize + swing LOOPED recording),
-`--undo` (RECORD while loop recording takes out the last notes played; on
-with `--swing` too), `--auto-keep` (no KEEP = OLD NEW prompt).
-`tools/mkdrums.sh` builds the drum disk with all of them.
+Options: `--pages` (our parameters on the EPS's edit pages: MUTE GROUP on
+wavesample page 6, QUANTIZE and SWING% on the sequencer page; with it
+`--swing 16:mpc:58` only sets their power-on values), `--undo` (RECORD while
+loop recording takes out the last notes played; on with `--swing` and
+`--pages` too), `--auto-keep` (no KEEP = OLD NEW prompt). Without `--pages`:
+`--groups` (mute groups per key, fixed at build time) and `--swing` per
+instrument (`1=16:mpc:58,2=8:sp1200:63`). `tools/epstool.py groups` lists or
+presets the mute groups in an instrument file on a disk. `tools/mkdrums.sh`
+builds the drum disk with `--pages`.
 
 `.hfe` output keeps the stock disk's track layout and works on any Gotek
 firmware. See docs/HARDWARE_TESTS.md for what to try on the EPS.

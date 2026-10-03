@@ -194,6 +194,7 @@ class CodeAreaTest(unittest.TestCase):
                 eps.ww(rec, 0x1234)
                 eps.wb(rec + 62, 0)
             eps.wb(0xFF16BB, 38)                   # incoming key D2
+            eps.ww(0xFF16C2, 0x30)                 # key-down layers
             vs = []
             for i, (inst, key) in enumerate([(0, 36), (1, 60), (4, 50), (4, 51), (2, 60), (0, 40)]):
                 v = VOICES + i * VSIZE

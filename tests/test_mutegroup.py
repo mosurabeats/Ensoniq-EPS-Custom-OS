@@ -26,6 +26,7 @@ AFTER_SITE = 0xFFACAC        # first instruction after the 8 displaced bytes
 VOICE_KILL = 0xFFB7C2
 ACTIVE, RELEASE = 0xFF16E4, 0xFF16DC
 IN_KEY = 0xFF16BB
+LAYER_SET = 0xFF16C2                        # 0x30 key-down layers, 0x32 key-up
 INST_TABLE = 0xFFDF70
 INST_RECORDS = 0xFFCE00      # test instrument records (zeros in the image)
 VOICES, VSIZE = 0xFF0940, 154
@@ -44,6 +45,7 @@ class MuteGroupTest(unittest.TestCase):
         self.eps.write(TEST_ORG, self.code)
         self.eps.write(HOOK_SITE, mkhook.hook_jsr(self.syms["mute_hook"], 8))
         self.eps.watch(VOICE_KILL)
+        self.eps.ww(LAYER_SET, 0x30)            # a key-down note-on
         self.groups("")
         for i in range(8):
             self.instrument(i)
@@ -91,6 +93,20 @@ class MuteGroupTest(unittest.TestCase):
         self.link(RELEASE, [])
         self.note_on(0, C2)
         self.assertEqual(self.kills(), [])
+
+    def test_key_up_layers_kill_nothing(self):
+        """The note-off runs the same routine for KEYUP LAYERS: no cutting
+        there (it would cut the released note's own tail)."""
+        self.groups("1=1")
+        v = [self.voice(0, 0, C2), self.voice(1, 0, D2)]
+        self.link(ACTIVE, v)
+        self.link(RELEASE, [])
+        self.eps.ww(LAYER_SET, 0x32)
+        self.note_on(0, D2)
+        self.assertEqual(self.kills(), [])
+        self.eps.ww(LAYER_SET, 0x30)
+        self.note_on(0, D2)
+        self.assertEqual(self.kills(), v)
 
     def test_kit_in_one_instrument(self):
         """Kick and snare cut each other, hats have their own group, the

@@ -160,8 +160,8 @@ instruments with per-key wavesamples.
 
 | # | Feature | Why | Size / where |
 |---|---|---|---|
-| 1 | Mute groups | hats, mono chops | done in emulator; hardware test 1 |
-| 2 | MPC-style loop recording: record-time timing correct + MPC60/3000/SP-1200 swing, **per-track swing**, no KEEP prompt, **undo last pass** | the core feel | no KEEP prompt **done**; swing quantize per instrument **done** (`--swing`, set at build time; MAME-tested); undo **done** (RECORD while loop recording; MAME-tested); next a panel page for the swing settings |
+| 1 | Mute groups | hats, mono chops | done; set on the EPS per wavesample (wavesample page 6, WS=ALL for a whole instrument), saved with the instrument (`--pages`, MAME-tested; saving untested) |
+| 2 | MPC-style loop recording: record-time timing correct + MPC60/3000/SP-1200 swing, **per-track swing**, no KEEP prompt, **undo last pass** | the core feel | no KEEP prompt **done**; swing quantize per instrument **done** (`--swing`, set at build time; MAME-tested); undo **done** (RECORD while loop recording; MAME-tested); QUANTIZE and SWING% on the sequencer page **done** (`--pages`; one setting for all instruments, like the MPC60) |
 | 3 | **Full level** per instrument (fixed velocity 127, like the MPC) | today: edit levels/envelopes by hand | tiny hook in note-on |
 | 4 | **One-shot** per instrument (key-up ignored, sample plays through) | today: edit release/sustain by hand | small hook in note-off |
 | 5 | **CHOP** (below) | chopping by hand is tedious | overlay 3 (new command) |

@@ -7,6 +7,10 @@
 | and groups work across instruments too. A key in a group also cuts itself
 | when retriggered (MPC style).
 |
+| Only for key-down: the note-off calls the same routine for the
+| instrument's KEYUP LAYERS (0xFF16C2 = 0x32 instead of 0x30), and cutting
+| there would cut the released note's own tail.
+|
 | Hook: the per-instrument note-on routine at 0xFFACA4 (D5 = instrument 0-7,
 | called once per instrument in the note's instrument mask) starts with:
 |     FFACA4  3005        move.w  d5,d0
@@ -35,6 +39,9 @@
 |
 | Tested in the emulator (tests/test_mutegroup.py); not yet on hardware.
 
+.ifndef PAGES
+        .equ    PAGES,        0         | (src/codearea.s sets it)
+.endif
         .equ    LIST_ACTIVE,  0x16E4    | list sentinels (abs.w -> 0xFF16xx)
         .equ    LIST_RELEASE, 0x16DC
         .equ    IN_KEY,       0x16BB    | incoming key (before transpose)
@@ -49,11 +56,18 @@
         .equ    KEY_LO,       21
         .equ    KEY_HI,       108
         .equ    NKEYS,        88
+        .equ    LAYER_SET,    0x16C2    | which layers the note-on plays: the
+        .equ    LAYERS_DOWN,  0x30      | instrument's KEYDWN LAYERS (0x32: KEYUP,
+                                        | from the note-off 0xFFAE7C)
+        .equ    V_WS,         22        | voice: its wavesample record
+        .equ    WS_GROUP,     0x11E     | wavesample record: mute group (src/pages.s)
 
         .text
         .globl  mute_hook
 mute_hook:
         movem.l d0-d4/d6/a0/a4,-(sp)
+        cmpi.w  #LAYERS_DOWN,LAYER_SET.w
+        bne.s   done                    | key-up layers (note-off): nothing
         lea     mute_table(pc),a0
         moveq   #7,d0
         and.w   d5,d0                   | d0 = instrument
@@ -73,7 +87,12 @@ mute_hook:
 1:      cmpi.w  #KEY_HI,d1
         ble.s   2f
         moveq   #KEY_HI,d1
-2:      bsr.s   group_of
+2:
+.if PAGES
+        bsr     ws_group                | the wavesample's group (page 6)
+.else
+        bsr.s   group_of
+.endif
         move.w  d1,d2                   | d2 = group of the new note
         beq.s   done
         move.w  #LIST_ACTIVE,d3
@@ -99,11 +118,19 @@ choke_list:
         beq.s   9f                      | back at the sentinel
         cmpi.b  #ST_KILLING,V_STATE(a4)
         beq.s   1b
+.if PAGES
+        move.l  V_WS(a4),d0             | its wavesample's group
+        beq.s   1b
+        movea.l d0,a1
+        moveq   #15,d1
+        and.b   WS_GROUP(a1),d1
+.else
         moveq   #7,d0
         and.b   V_INST(a4),d0
         moveq   #0,d1
         move.b  V_KEY(a4),d1
         bsr.s   group_of
+.endif
         cmp.w   d1,d2
         bne.s   1b
         movem.l d2-d3/a0/a4,-(sp)
@@ -132,6 +159,49 @@ group_of:
         rts
 8:      moveq   #0,d1
         rts
+
+.if PAGES
+| Group of the wavesample that key d1.w plays on instrument record a4: the
+| first layer (0-7) that has one for the key, as the note-on finds it
+| (0xFFAD58: layer table at +0x64, 0xFFAF62: the layer's key map at +6,
+| wavesample table at +0x84). -> d1.w. Uses d0, d3, d4, a0, a1.
+ws_group:
+        movea.w (a4),a1                 | handle
+        movea.l (a1),a1                 | instrument data
+        move.w  d1,d3
+        add.w   d3,d3                   | key map index
+        moveq   #0,d4                   | 4 * layer
+1:      lea     (a1,d4.w),a0
+        bsr.s   packed                  | the layer
+        beq.s   2f
+        lea     (a1,d0.l),a0
+        moveq   #0,d0
+        move.b  6(a0,d3.w),d0           | its wavesample for the key
+        beq.s   2f
+        lsl.w   #2,d0
+        lea     0x20(a1,d0.w),a0        | (0x64 + 0x20: the wavesample table)
+        bsr.s   packed
+        beq.s   2f
+        lea     (a1,d0.l),a0
+        moveq   #15,d1
+        and.b   WS_GROUP(a0),d1
+        rts
+2:      addq.w  #4,d4
+        cmpi.w  #32,d4
+        bcs.s   1b
+        moveq   #0,d1
+        rts
+
+| a0 + 0x64..0x67 -> d0.l: an offset in the instrument data, stored as
+| ROM 0xC08D1A reads it. Z if 0 (none).
+packed: moveq   #0,d0
+        move.b  0x67(a0),d0
+        lsr.w   #4,d0
+        swap    d0
+        movep.w 0x64(a0),d0
+        lsl.l   #4,d0
+        rts
+.endif
 
 | Group per key, 4 bits each: instrument 0 keys 21-108, then instrument 1 ...
 | (even index in the high nibble). MUTE_TABLE_SIZE bytes right after the

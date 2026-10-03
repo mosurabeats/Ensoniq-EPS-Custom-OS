@@ -65,8 +65,9 @@ def main():
     os.makedirs(T.OUT, exist_ok=True)
     disks = {"undo_stock": L.make_disk("undo_stock", ["--auto-keep"]),
              "undo_on": L.make_disk("undo_on", ["--undo", "--auto-keep"]),
-             "undo_swing": L.make_disk("undo_swing", ["--swing", "16:mpc:58", "--auto-keep"])}
-    with ThreadPoolExecutor(3) as ex:
+             "undo_swing": L.make_disk("undo_swing", ["--swing", "16:mpc:58", "--auto-keep"]),
+             "undo_pages": L.make_disk("undo_pages", ["--pages", "--auto-keep"])}
+    with ThreadPoolExecutor(4) as ex:
         res = dict(zip(disks, ex.map(lambda kv: run(*kv), disks.items())))
     ok = []
 
@@ -79,7 +80,7 @@ def main():
         print(f"{name}: final {[n[1] for n in final or []]}")
         print(f"{name}: voice starts {starts}")
     keys = lambda notes: sorted(n[1] for n in notes or [])  # noqa: E731
-    for name in ("undo_on", "undo_swing"):
+    for name in ("undo_on", "undo_swing", "undo_pages"):
         _, takes, final, starts = res[name]
         check(f"{name}: pass 2 still plays pass 1's D2", D2 in started(starts, 40.6, 41.4))
         check(f"{name}: pass 3 plays no G2 (undone in pass 2)", G2 not in started(starts, 42.1, 42.9))

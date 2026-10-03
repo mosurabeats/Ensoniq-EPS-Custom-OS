@@ -161,20 +161,38 @@ def swing_table(settings):
     return bytes(t)
 
 
+QUANT_GRIDS = [0, 48, 32, 24, 16, 12, 8, 6, 4]     # src/pages.s quant_grids
+
+
+def swing_default(setting):
+    """(grid, style, amount) -> (QUANTIZE choice, SWING%) for src/pages.s."""
+    grid, style, amount = setting
+    pct = swing.SP1200_LABELS[amount] if style == "sp1200" else amount
+    return QUANT_GRIDS.index(grid), pct
+
+
 def build_image(groups, swing_settings=None, undo=False, pages=False):
     """Stage 2 (src/codearea.s) at offset 0, mute table (and swing table)
     filled in and the checksum set so all words sum to 0. The loop-record
     code (src/looprec.s: swing and undo) is in it with swing settings or
     undo. Returns (bytes, symbols)."""
-    looprec = bool(swing_settings) or undo
+    looprec = bool(swing_settings) or undo or pages
     code, syms = mkhook.assemble(IMAGE_SRC, 0, "image", {"LOOPREC": 1 if looprec else 0,
                                                           "PAGES": 1 if pages else 0})
+    if pages and any(groups.values()):
+        raise ValueError("with --pages, mute groups are per wavesample (wavesample page 6, "
+                         "saved with the instrument): use epstool.py groups for a disk's files")
     if pages and syms["pages_end"] > 0x1000:
         raise ValueError("src/pages.s tables must be in the image's first 4 KB")
     table = group_table(groups)
     off = syms["mute_table"]
     code[off:off + len(table)] = table
-    if swing_settings:
+    if swing_settings and pages:
+        # one setting for every instrument: the sequencer page's QUANTIZE and SWING%
+        if len(set(swing_settings.values())) != 1 or len(swing_settings) != 8:
+            raise ValueError("with --pages, --swing is one setting for all instruments")
+        code[syms["swing_default"]:syms["swing_default"] + 2] = bytes(swing_default(swing_settings[0]))
+    elif swing_settings:
         st = swing_table(swing_settings)
         off = syms["swing_settings"]
         code[off:off + len(st)] = st

@@ -497,20 +497,36 @@ Descriptors at ROM `0xC028DC`: display handler, RAM variable, message, word:
   goes to every wavesample of the layer.
 * **Wavesample record** (in the instrument data, `0x120` bytes, then the
   sample data): one parameter per word, value in the high byte; name at
-  +0x0C; envelopes; +0xAA ROOT KEY … +0x11C MOD. Byte +0x11E is 0 in all
+  +0x0A (12 characters, one per word); envelopes; +0xAA ROOT KEY … +0x11C MOD. Byte +0x11E is 0 in all
   78 factory wavesamples we have and nothing in the OS reads it: our mute
   group. The instrument data in memory is the file as on disk (checked
   byte for byte), so it saves with the instrument.
 * **Panel**: in EDIT, the number buttons pick the page; codes 16/17
   (ids 0x22/0x24) step to the previous/next parameter (wrapping), the
   arrows (codes 10/11) change the value. docs/MAME.md has the codes.
+* **Choice parameters** (type 0x0E): w2 points at a 6-byte table: a long
+  pointer to fixed-width NUL-terminated labels, the width, the count
+  (`0xFF33FC`). The OS resolves w2 at `0xFF33EA` (display) and `0xFF3B1E`
+  (edit).
+* **Note-on for key-up layers:** the note-off runs the instrument note-on
+  `0xFFACA4` again for the KEYUP LAYERS (`0xFF16C2` = 0x32; 0x30 for the
+  key-down layers, `0xFFAC4E`/`0xFFAE7C`). A hook there must check which.
 * **Our parameters** (`src/pages.s`, `mkcodearea.py --pages`): the ROM index
   tables are packed, so raising a page's "last" takes in the next table's
   first entry; hooks at `0xFF2CA6`, `0xFF3214`, `0xFF32F6` return our
   descriptor for that slot when it's reached through that page's record,
-  and `0xFF3308` shows our label text from the code area (label words
-  `0x7000` + offset). MAME: MUTE GROUP shows after VOLUME MOD on
-  wavesample page 6 and the arrows set byte +0x11E of the wavesamples.
+  `0xFF3308` shows our label text from the code area (label words `0x7000`
+  + offset), and `0xFF33EA`/`0xFF3B1E` find our choice tables. Added:
+  * MUTE GROUP after VOLUME MOD on wavesample page 6 (byte +0x11E). The
+    mute hook (`src/mutegroup.s`) takes the new note's group from the
+    wavesample the key plays (first layer with one) and a sounding voice's
+    from its wavesample (voice +22).
+  * QUANTIZE (choice: OFF … 1/32T) and SWING% after RECORD MODE on the
+    sequencer page, in `0xFF8174`/`0xFF8175` (after the last 10-byte
+    sequencer list node at `0xFF816A`; no references in the OS or ROM).
+    `src/looprec.s` panel_swing turns them into the swing settings.
+  MAME (`mame/test_panel.py`): both pages show and edit, groups cut, a
+  QUANTIZE set on the panel quantizes a loop take.
 
 ### Kernel and tasks (boot ROM)
 

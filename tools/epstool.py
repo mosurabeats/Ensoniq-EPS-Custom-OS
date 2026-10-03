@@ -14,6 +14,10 @@ Subcommands
                                      into free blocks directly after it)
   add      IMAGE SRC INDEX OUT       Copy file INDEX of disk SRC (e.g. an
                                      instrument) onto IMAGE, write OUT
+  groups   IMAGE INDEX [SPEC OUT]  List an instrument's wavesamples (keys, name,
+                                     mute group), or set mute groups in it:
+                                     SPEC "C2=1,G2-A#2=2" by key, or "ALL=3"
+                                     (tools/instfile.py; --pages OSes use them)
   patch    OS.bin PATCH.json OUT.bin Apply a verified byte patch to an OS file
   info     OS.bin                    Summarise an OS file
 
@@ -414,6 +418,8 @@ def main():
     a.add_argument("src"); a.add_argument("dst")
     a = sp.add_parser("add"); a.add_argument("image"); a.add_argument("src")
     a.add_argument("index", type=int); a.add_argument("dst")
+    a = sp.add_parser("groups"); a.add_argument("image"); a.add_argument("index", type=int)
+    a.add_argument("spec", nargs="?"); a.add_argument("dst", nargs="?")
     a = sp.add_parser("patch"); a.add_argument("os"); a.add_argument("patch")
     a.add_argument("dst")
     a = sp.add_parser("info"); a.add_argument("os")
@@ -447,6 +453,24 @@ def main():
         slot = add_file(img, load_image(args.src), args.index)
         save_image(img, args.dst, open(args.image, "rb").read())
         print(f"{args.dst}: added as entry {slot}, {free_count(img)} blocks free")
+    elif args.cmd == "groups":
+        import instfile
+        img = load_image(args.image)
+        data = read_file(img, get_entry(img, args.index))
+        if args.spec:
+            if not args.dst:
+                sys.exit("groups: SPEC needs an output image")
+            data, set_ = instfile.set_groups(data, args.spec)
+            replace_file(img, args.index, bytes(data))
+            save_image(img, args.dst, open(args.image, "rb").read())
+            print(f"{args.dst}: groups set on wavesamples {sorted(set_)}")
+        ranges, wss = instfile.key_ranges(data), instfile.wavesamples(data)
+        names = {0: ""}
+        for w, o in wss.items():
+            lo, hi = ranges.get(w, (None, None))
+            keys = f"{lo}-{hi}" if lo is not None else "-"
+            print(f"  WS {w:3d}  keys {keys:8s} {instfile.ws_name(data, o)!r:16s} "
+                  f"group {data[o + instfile.WS_GROUP]}")
     elif args.cmd == "patch":
         patch = json.load(open(args.patch))
         out = apply_patch(open(args.os, "rb").read(), patch)

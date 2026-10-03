@@ -82,22 +82,64 @@ mute-group one.
 
 ## Drum disk (`EPS249_DRUMS`)
 
-A disk to play with: OS 2.49 with mute groups, plus two kits from Ensoniq's
-factory drum disk 9. Build it with `tools/mkdrums.sh` (after
+A disk to play with: OS 2.49 with our additions, plus two kits from
+Ensoniq's factory drum disk 9. Build it with `tools/mkdrums.sh` (after
 `tools/fetch.sh sounds`).
 
-**Load TR 8O8 into instrument 1 and LIVE KIT into instrument 2.** The mute
-groups belong to instrument slots, not to the kits: LOAD, ENTER, instrument
-button 1 for file 1; then LOAD, arrow to FILE 2, ENTER, instrument button 2.
-Together the kits need about 640 KB of sample memory, so without a memory
-expander load one at a time (TR 8O8 into 1, or LIVE KIT into 2).
+**Load the kits:** LOAD, ENTER, instrument button 1 for TR 8O8 (file 1);
+then LOAD, arrow to FILE 2, ENTER, instrument button 2 for LIVE KIT.
+Together they need about 640 KB of sample memory, so without a memory
+expander load one at a time. The mute groups are stored in the kits'
+wavesamples (set on this disk with `tools/epstool.py groups`), so they work
+in any instrument slot and stay with the kit when you save it.
+
+### Setting things on the EPS (new parameters)
+
+Our parameters sit on the EPS's own EDIT pages. Step through a page's
+parameters with the two buttons that move to the previous/next parameter,
+and change a value with the arrows or the data slider, as for any other
+parameter.
+
+* **MUTE GROUP** (0 = none, 1–15): EDIT, select the instrument, then
+  wavesample page 6 (the one with WS VOLUME, PAN, the fades and VOLUME
+  MOD). MUTE GROUP is right after VOLUME MOD (or one step back from WS
+  VOLUME).
+  * With **WS=ALL** on the edit selection screen, the value goes to every
+    wavesample of the layer: the whole instrument in one group (a chopped
+    loop where every slice cuts the others).
+  * With **one wavesample** selected, only that one: kick and snare in
+    group 1, open and closed hat in group 2, and so on.
+  * Groups are shared by all instruments: group 2 on two instruments chokes
+    across them. Use different numbers to keep them apart.
+  * A sounding note is cut when a note in the same group starts (also the
+    same key again, MPC style). Releasing a key cuts nothing.
+* **QUANTIZE** (OFF, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T) and
+  **SWING%** (50–75; below 50 = straight, only 1/8 and 1/16 swing): EDIT,
+  SEQ/SONG page, right after RECORD MODE. They apply to every instrument
+  when you loop record (RECORD MODE = LOOPED): what you play lands on the
+  grid from the next pass on, like an MPC's timing correct. This disk
+  starts at 1/16 and 58%. Not saved with the sequence (yet): set them after
+  power-on.
+* **Undo while loop recording:** press RECORD on its own (not RECORD +
+  PLAY). It takes out the notes you played so far in this pass, or if you
+  haven't played any yet, the last pass's. A second press takes out the
+  pass before. No message on the display.
+
+**Please try and tell us:**
+1. MUTE GROUP shows on wavesample page 6 and the arrows change it; WS=ALL
+   vs one wavesample behaves as above.
+2. **SAVE INSTRUMENT** after changing a group, power off, reload: is the
+   group still there? (MAME can't save to disk yet, so this is untested.)
+3. QUANTIZE/SWING% on the SEQ/SONG page, and a loop recording with them.
+4. Anything on those pages that looks wrong: garbled text, the wrong
+   parameter, a value that won't change, or an error/reboot.
 
 **TR 8O8** (instrument 1). Keys found by playing every key in MAME and
 analysing the samples:
 
 | Keys | Sound | Mute group |
 |---|---|---|
-| C2, C#2 | kick (808 boom, sustains while held) | 2: a new kick cuts the old one's tail |
+| C2, C#2 (the kick wavesample covers A0–C2) | kick (808 boom, sustains while held) | 2: a new kick cuts the old one's tail |
 | D2, E2, F#2 | snare | |
 | D#2 | rim | |
 | F2 | noise loop (hat-like) | |
@@ -127,19 +169,10 @@ analysing the samples:
 tell us if a key is something else.)
 
 The drum disk also has:
-* **Swing quantize for LOOPED recording** on instruments 1 and 2: 1/16
-  at MPC 58%. Record in LOOPED mode and each pass's hits land on the swung
-  grid from the next pass on, like an MPC's timing correct.
 * **Auto-keep**: after recording over a track (any record mode), STOP keeps
   the new take without the "KEEP = OLD NEW" prompt. Outside loop recording
   there's no undo, so don't record over anything precious.
-* **Loop undo**: while loop recording (LOOPED), press RECORD (just RECORD,
-  not RECORD + PLAY) to take out the most recent notes, a pass at a time:
-  the notes you played so far in this pass, or if you haven't played any
-  yet, the last pass's. A second press then takes out the pass before
-  (only the last finished pass can be undone). Notes from earlier passes
-  go quiet right away; notes from this pass stop at the next wrap. There's
-  no message on the display.
+* QUANTIZE 1/16 at SWING% 58 and loop undo, as above.
 
 **Try:** hold or let ring the open hat, then hit the closed hat: the open hat
 stops. Roll the 808 kick on C2: each hit cuts the last one's boom. In MAME

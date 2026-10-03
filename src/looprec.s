@@ -84,6 +84,9 @@ wrap_hook:
         jsr     0x6B12.w                | the displaced calls
         jsr     0x6AD6.w
         movem.l d0-d7/a0-a6,-(sp)
+.if PAGES
+        bsr     panel_swing
+.endif
         lea     note_log(pc),a2
         move.l  WRITE_PTR.w,d1          | end of the finished take
         move.l  BUF_A.w,d2
@@ -139,6 +142,9 @@ append_hook:
         move.w  U_CUR(a1),d0
         or.w    d0,4(a0)
         addq.w  #1,U_NEW(a1)
+.if PAGES
+        bsr     panel_swing
+.endif
         cmpi.w  #ST_RECORDING,SEQ_STATE.w | log it for swing_logged?
         bne.s   8f
         moveq   #15,d0                  | its instrument swung at all?
@@ -268,6 +274,9 @@ stop_hook:
         cmpi.b  #LOOPED,REC_MODE.w
         bne.s   9f
         movem.l d0-d7/a0-a6,-(sp)
+.if PAGES
+        bsr     panel_swing
+.endif
         lea     undo_state(pc),a2
         move.w  U_KILL(a2),d4           | killed notes still in the take
         or.w    U_KILLP(a2),d4
@@ -360,6 +369,48 @@ quantize_logged:
 8:      lea     note_log(pc),a2         | stopped with a key held: the next
         move.w  #1,2(a2)                | wrap scans the whole take
         rts
+
+.if PAGES
+| QUANTIZE and SWING% from the sequencer page (src/pages.s), the same for
+| every instrument -> swing_settings. Swing (MPC: the second 8th or 16th
+| of each pair at SWING% of the pair, tools/swing.py offset()) only on the
+| 1/8 and 1/16 grids.
+panel_swing:
+        movem.l d0-d2/a0,-(sp)
+        moveq   #0,d0
+        move.b  QUANT_VAR.w,d0
+        cmpi.w  #NQUANT,d0
+        bcs.s   1f
+        moveq   #0,d0
+1:      add.w   d0,d0
+        lea     quant_grids(pc),a0
+        move.w  0(a0,d0.w),d1           | grid
+        moveq   #0,d2                   | offset
+        cmpi.w  #24,d1
+        beq.s   2f
+        cmpi.w  #12,d1
+        bne.s   4f
+2:      moveq   #0,d0
+        move.b  SWING_VAR.w,d0
+        cmpi.w  #50,d0
+        bls.s   4f                      | straight
+        cmpi.w  #75,d0
+        bls.s   3f
+        moveq   #75,d0
+3:      mulu.w  d1,d0
+        add.l   d0,d0                   | 2 * grid * pct
+        addi.l  #50,d0
+        divu.w  #100,d0                 | rounded
+        sub.w   d1,d0
+        move.w  d0,d2
+4:      lea     swing_settings(pc),a0
+        moveq   #7,d0
+5:      move.w  d1,(a0)+
+        move.w  d2,(a0)+
+        dbf     d0,5b
+        movem.l (sp)+,d0-d2/a0
+        rts
+.endif
 
         .balign 2
 swing_settings:

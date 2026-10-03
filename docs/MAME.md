@@ -159,7 +159,13 @@ python3 mame/test_loop_record.py  # --auto-keep: no KEEP prompt, the take plays 
 python3 mame/test_swing.py        # --swing 16:mpc:58: takes land on the swung grid
 python3 mame/test_undo.py         # --undo: RECORD takes out this pass's, then the
                                   # last pass's notes (mame/keys/loop_undo.txt)
+python3 mame/test_panel.py        # --pages: MUTE GROUP set on wavesample page 6
+                                  # (mame/keys/panel_mute.txt), QUANTIZE on the
+                                  # sequencer page (loop_panel_quant.txt)
 ```
+
+Saving to disk (SAVE INSTRUMENT) crashes in MAME on the stock OS too
+(ERROR 131 while "SAVING"): disk writes aren't emulated well enough yet.
 
 ## How the OS reads the disk (and why stock MAME failed)
 

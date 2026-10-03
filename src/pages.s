@@ -22,18 +22,33 @@
 |             Our label words are 0x7000 + offset in this image (ROM
 |             0xC07000-0xC07FFF is kernel code, never a label).
 |
+| Choice parameters (type 0x0E) point at a 6-byte table (long pointer to
+| fixed-width labels, width, count); the OS resolves that word at
+| 0xFF33EA (display) and 0xFF3B1E (edit), hooked the same way, so our
+| tables can be ours too.
+|
 | Wavesample page 6 (WS VOLUME, PAN, fades, VOLUME MOD) gets MUTE GROUP
 | (0-15) after VOLUME MOD, stored in byte 0x11E of the wavesample record:
 | the last header word, 0 in every factory wavesample we have and not
 | used by the OS. The record is saved with the instrument as it is in
 | memory.
+|
+| The sequencer page (TEMPO ... RECORD MODE) gets QUANTIZE (OFF, 1/4 ...
+| 1/32T) and SWING% (50-75; below 50 is straight), for every instrument
+| when loop recording (src/looprec.s panel_swing), like an MPC60's timing
+| correct. They live in 0xFF8174/0xFF8175: OS RAM after the sequencer's
+| last list node (0xFF816A, 10 bytes) that nothing in the OS or the ROM
+| refers to.
 
         .equ    RESV,       0x7000      | our label words: RESV + offset
+        .equ    QUANT_VAR,  0x8174      | QUANTIZE choice (abs.w: 0xFF8174)
+        .equ    SWING_VAR,  0x8175      | SWING%
+        .equ    NQUANT,     9
         .equ    ROM_BASE,   0xC00000
-        .equ    WS_GROUP,   0x11E       | wavesample record: mute group
 
         .text
-        .globl  desc_hook, desc2_hook, cur_hook, label_hook, page_init
+        .globl  desc_hook, desc2_hook, cur_hook, label_hook, choice_hook, page_init
+        .globl  quant_grids, swing_default
 
 | a3 = entry address. Ours (the slot after this page's ROM table, reached
 | through this page's record a5)? Then a3 = our descriptor and Z is set.
@@ -118,9 +133,34 @@ label_hook:
         adda.l  (sp)+,a2                | ours: a long address >= 0x8000
 9:      jmp     0x2400.w
 
+| 0xFF33EA and 0xFF3B1E: "movea.w 2(a3),a1; cmpa.w #0x8000,a1", then
+| "bcc.s +6; adda.l #0xC00000,a1": a choice parameter's table. We resolve
+| it (ours: RESV + offset) and return with C clear, so the adda is skipped.
+choice_hook:
+        movea.w 2(a3),a1
+        cmpa.w  #RESV,a1
+        bcs.s   1f                      | ROM
+        cmpa.w  #RESV+0x1000,a1
+        bcc.s   9f                      | OS RAM
+        suba.w  #RESV,a1
+        move.l  a1,-(sp)
+        lea     image(pc),a1
+        adda.l  (sp)+,a1
+        bra.s   9f
+1:      adda.l  #ROM_BASE,a1
+9:      andi.b  #0xFE,ccr
+        rts
+
 | At boot (from init): each page with a slot gets "last" (and the end of
-| its search range, if that was "last") one entry further.
+| its search range, if that was "last") one entry further. Our choice
+| table gets its labels' address; QUANTIZE and SWING% their defaults.
 page_init:
+        lea     quant_labels(pc),a1
+        lea     quant_table(pc),a0
+        move.l  a1,(a0)
+        lea     swing_default(pc),a0
+        move.b  (a0)+,QUANT_VAR.w
+        move.b  (a0),SWING_VAR.w
         lea     slots(pc),a0
 1:      move.w  (a0)+,d0
         beq.s   9f
@@ -141,6 +181,12 @@ slots:
         .word   0xC110                  | wavesample page 6
         .long   0x2572
         .word   mute_group_desc-image
+        .word   0xC0B6                  | sequencer page + 2
+        .long   0x23F0
+        .word   quant_desc-image
+        .word   0xC0B6
+        .long   0x23F2
+        .word   swing_desc-image
         .word   0
 
 mute_group_desc:
@@ -150,6 +196,39 @@ mute_group_desc:
         .word   RESV+(mute_group_label-image)
 mute_group_label:
         .asciz  "MUTE GROUP"
+        .balign 2
+
+quant_desc:
+        .byte   0x0A, 0x0E              | parameter 10, a choice
+        .word   RESV+(quant_table-image)
+        .word   QUANT_VAR
+        .word   RESV+(quant_label-image)
+swing_desc:
+        .byte   0x0B, 0x00              | parameter 11, number 0-max
+        .word   75
+        .word   SWING_VAR
+        .word   RESV+(swing_label-image)
+quant_table:
+        .long   0                       | quant_labels (page_init)
+        .byte   5, NQUANT               | width, count
+quant_grids:                            | ticks at 48 PPQN, by choice
+        .word   0, 48, 32, 24, 16, 12, 8, 6, 4
+swing_default:
+        .byte   0, 0                    | QUANTIZE, SWING% (mkcodearea.py --swing)
+quant_labels:
+        .asciz  "OFF  "
+        .asciz  "1/4  "
+        .asciz  "1/4T "
+        .asciz  "1/8  "
+        .asciz  "1/8T "
+        .asciz  "1/16 "
+        .asciz  "1/16T"
+        .asciz  "1/32 "
+        .asciz  "1/32T"
+quant_label:
+        .asciz  "QUANTIZE"
+swing_label:
+        .asciz  "SWING%"
         .balign 2
         .globl  pages_end
 pages_end:                              | (mkcodearea.py: must be below 0x1000)
