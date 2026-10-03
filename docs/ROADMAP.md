@@ -85,30 +85,38 @@ format.
 
 ## Shared blocker: space for new code
 
-Resident RAM (`0xFF2000–0xFFDFFF`) has no obvious free gap. Every zero run is
-referenced by code, and `0xFFDF80–0xFFDFFF` is the stack. Options, best
-first:
-1. **The empty overlay slot (overlay 3)** for anything not real-time: the CHOP
-   command, TIMING CORRECT, and their UI.
-2. **Move a rarely used resident routine into an overlay**, freeing resident
-   bytes for the real-time hooks (mute groups about 110 bytes, swing
-   about 60 bytes).
-3. **Dead code:** routines nothing calls. Candidates come from static
-   analysis and must be confirmed.
-4. **Reserve a little sample RAM (best fit for an expanded EPS).** At boot, a
-   small installer loaded from overlay 3 would:
-   1. take ~1 KB for itself by lowering the sample area's upper bound (or
-      claiming the top of it),
-   2. copy the real-time hooks there, and
-   3. write the `jsr` into each hook site at run time.
+Resident RAM (`0xFF2000–0xFFDFFF`) is packed. What we measured:
 
-   With a 2x expander, 1 KB of sample RAM costs nothing noticeable. The
-   floppy patch then only needs a ~16-byte boot trigger ("load overlay 3,
-   call it, reload overlay 0" through the OS's own loader at `0xFF4E40`).
-   Two things need confirming on hardware first: that the 68000 can run code
-   from sample RAM, and what lives above `0xFF165A`.
-5. **A boot ROM dump** would show exactly which RAM the boot ROM and OS
-   leave free.
+| Approach | Yield | Cost / risk | Status |
+|---|---|---|---|
+| **Dead code** (nothing calls it) | ~150 bytes in 7 pieces of 16–30 bytes. Not usable | none | measured; ruled out |
+| **Move boot-only code into the boot overlay.** File chunk 0x14000 is the init code; it runs once from the overlay window and has ~4.5 KB unused behind it. A resident routine used only at boot can move there and leave its resident space free. | `0xFF448C–0xFF44CB` = **64 contiguous bytes**, confirmed (only the init code calls it). More is likely from routines reached only through other boot-only routines. | No features lost. Two call sites in the init code are repointed; one `beq.w` needs re-encoding | best first step |
+| **Move non-real-time resident routines into overlay 3** (menu commands, edit-page handlers), leaving a ~24-byte stub: "load overlay 3, call, reload previous overlay" | KBs | That command gains a short disk read when used (the EPS already does this for its own overlays). Only safe for routines never called while overlay code is running | needs routines mapped to commands |
+| **Remove features you don't use**: replace a resident command handler with "not available" and reuse its bytes | size of the feature | You lose that feature. SCSI is mostly in the boot ROM, so removing it frees little | your call, once commands are named |
+| **Optimise (rewrite routines smaller)**: re-implement a routine in fewer bytes, in place, and use the freed tail | 10–30% of each rewritten routine | Highest risk: every rewrite must behave identically. Don't touch real-time code (voices, MIDI, sequencer clock) | last resort |
+| **Reserve sample RAM** (~1 KB, at boot from the init code) | as much as needed | Must confirm that the 68000 can execute from sample RAM. Costs 1 KB of sample memory (unnoticeable with your 2x expander) | needs a hardware test |
+
+**Plan:** relocate boot-only code first (safe, no feature loss), then move
+non-real-time command code into overlay 3. Removing features is a fallback,
+and only for features you say you don't use.
+
+**Fitting the mute groups:** the hook is 108 bytes now and can be tightened
+to ~90 (save only the registers it uses). Then it fits in the 64-byte boot
+cave plus one more small cave, or entirely in the next relocated routine.
+
+### UI descriptors and message numbers
+
+`0xFFC560…` holds command/page records of the form
+`handler, message#, flags, 3 × button handler, 0`, for example
+`7F88 132A 0000 4552 455A 4552 0000`. The OS passes **message numbers**
+(`0x1300–0x1CA7`) to the display routines (e.g. `move.w #0x14EB,a2;
+jsr 0x23FC`). The display text is probably stored in the boot ROM, which
+explains why the OS has almost no ASCII. Two consequences:
+* These records let us list every command and its handler, which is how we
+  pick what to move to overlay 3. Naming them needs the boot ROM text or a
+  hardware run.
+* New screens (mute group, CHOP, swing) need our own text-drawing call or
+  reused ROM messages.
 
 ### Debug channel: MIDI out
 
