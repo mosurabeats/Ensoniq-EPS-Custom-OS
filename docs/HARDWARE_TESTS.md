@@ -126,6 +126,10 @@ analysing the samples:
 (The sound names are educated guesses from length, brightness and noise;
 tell us if a key is something else.)
 
+The drum disk also has **auto-keep**: after recording over a track (any
+record mode), STOP keeps the new take without the "KEEP = OLD NEW" prompt.
+There's no undo yet, so don't record over anything precious.
+
 **Try:** hold or let ring the open hat, then hit the closed hat: the open hat
 stops. Roll the 808 kick on C2: each hit cuts the last one's boom. In MAME
 both kits behave like this (`mame/keys/drums_disk.txt`).

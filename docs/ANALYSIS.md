@@ -518,13 +518,27 @@ supervisor stack `0xFFC960`, the stack area `0xFFC994`, and the task table
   ticks since the last event (`0xFF804A`) as time events (`0x8B90 | …`, or
   added to the previous event's 7-bit delta when small), then the note
   event is appended (`0xFF6E72`; `0xFF74EE` patches the stream after it).
-* Plan for record-time swing (ROADMAP #2): instead of moving each note as
-  it's written (hard in a delta stream with older passes merged in),
-  re-quantize the track with the swing grid at the end of each LOOPED
-  pass. Notes already on the grid don't move, so it's equivalent to
-  quantizing at record time. The same point replaces the KEEP prompt and
-  takes the undo snapshot. Next: decode the note event format and the
-  loop-wrap point.
+* **Note events** are three words (found by recording known notes in MAME):
+  w0 bits 14–12 = delta to the next event, high 3 bits; bits 11–4 = key −
+  21; w1 bits 15–3 = duration in ticks; w2 bits 14–11 = delta, low 4 bits;
+  bits 10–4 = velocity. Events with "key" codes 0xB0+ are others: `0x8B9x`
+  carries long time gaps, and recording starts with `0x8BBx/8B1x/8B8x/8BDx`
+  controller states.
+* **LOOPED recording merges every pass itself.** At each loop wrap the
+  sequencer passes through state `0x5942`, and the record pointer
+  (`0xFF811C`) flips between two buffers (offsets `0x0278` and `0x10278`
+  in sequencer memory): the pass just played is merged into the other
+  buffer. Only STOP asks "KEEP = OLD NEW".
+* **The KEEP prompt** is UI code at `0xFF2702`: it shows the prompt
+  (`0xFFA4EC`), waits for a button, and stores OLD (button 4) → 0 or NEW
+  (button 6) → 1 in `0xFF815E`, then goes on at `0xFF2652`.
+  `mkcodearea.py --auto-keep` replaces it with "store 1, go on"
+  (`mame/test_loop_record.py`: no prompt, the new notes play back).
+* Plan for record-time swing (ROADMAP #2): re-quantize at each loop wrap,
+  after the OS's merge, with the swing grid. Notes already on the grid
+  don't move, so it's equivalent to quantizing as you play. Undo of the
+  last pass: the buffer from before the last wrap. Next: the wrap handler
+  for state `0x5942` and the sequencer memory layout.
 
 ### Unused and unfinished bits
 

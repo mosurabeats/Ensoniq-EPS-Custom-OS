@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the code-area patch: our resident code in the top of sample RAM.
 
-  mkcodearea.py OS.bin -o PATCH.json [--groups SPEC] [--area BYTES]
+  mkcodearea.py OS.bin -o PATCH.json [--groups SPEC] [--auto-keep] [--area BYTES]
                 [--disk STOCK.ede|STOCK.hfe OUT.img|OUT.ede|OUT.hfe]
 
 The patch has three edits to the OS file:
@@ -118,7 +118,15 @@ def build_image(groups):
     return bytes(code), syms
 
 
-def build(os_bin, groups="", area_size=None):
+# KEEP = OLD NEW prompt after recording over a track (UI code at 0xFF2702):
+# it shows the prompt (0xFFA4EC) and waits for a button; NEW stores 1 in
+# 0xFF815E and continues at 0xFF2652. Auto-keep does exactly that without
+# asking: "move.b #1,0x815E.w; bra.w 0xFF2652" over the first 10 bytes.
+AUTO_KEEP = {"addr": "0xFF2702", "expect": "31fc0002c2ec0c380000",
+             "data": "11fc0001815e" + "6000" + ((0xFF2652 - 0xFF270A) & 0xFFFF).to_bytes(2, "big").hex()}
+
+
+def build(os_bin, groups="", area_size=None, auto_keep=False):
     if not isinstance(groups, dict):
         groups = parse_groups(groups)
     image, isyms = build_image(groups)
@@ -151,6 +159,8 @@ def build(os_bin, groups="", area_size=None):
         {"addr": f"0x{OVERLAY_WINDOW:06X}", "overlay": 3, "expect": fill.hex(),
          "data": image.hex()},
     ]}
+    if auto_keep:
+        patch["edits"].append(dict(AUTO_KEEP))
     info = {"loader_bytes": len(loader), "install_end": syms["install_end"],
             "image_bytes": len(image), "blocks": blocks,
             "area_size": area, "image": image, "image_offsets": isyms}
@@ -162,13 +172,15 @@ def main():
     ap.add_argument("os")
     ap.add_argument("-o", "--out", required=True)
     ap.add_argument("--groups", default="")
+    ap.add_argument("--auto-keep", action="store_true",
+                    help="no KEEP = OLD NEW prompt after recording: keep NEW")
     ap.add_argument("--area", type=int, default=AREA_SIZE,
                     help=f"code area size in bytes (default {AREA_SIZE})")
     ap.add_argument("--disk", nargs=2, metavar=("STOCK", "OUT"))
     a = ap.parse_args()
     os_bin = open(a.os, "rb").read()
     groups = parse_groups(a.groups)
-    patch, info = build(os_bin, groups, a.area)
+    patch, info = build(os_bin, groups, a.area, a.auto_keep)
     json.dump(patch, open(a.out, "w"), indent=1)
     used = sorted({g for g in groups.values() if g})
     print(f"{a.out}: loader {info['install_end'] - STAGE}/{STACK_LO - STAGE} bytes, "
