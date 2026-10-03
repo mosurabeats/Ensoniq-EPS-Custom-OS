@@ -19,7 +19,7 @@ other while the hats use another group; groups also work across
 instruments; and a key in a group cuts itself when retriggered (MPC
 style). A chopped break with all its keys in one group plays mono.
 
-**Implementation:** `src/mutegroup.s`, 204 bytes of code + a 352-byte table
+**Implementation:** `src/mutegroup.s`, 182 bytes of code + a 352-byte table
 (4 bits per instrument × key), in the code area. **Passing in the emulator**
 (`tests/test_mutegroup.py`, real OS voice kill), not yet on hardware:
 * Hook: per-instrument note-on at `0xFFACA4` (D5 = instrument). The first
