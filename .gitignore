@@ -1,0 +1,9 @@
+build/
+*.bin
+*.ede
+*.eda
+*.img
+*.gkh
+*.exe
+*.dis
+__pycache__/
