@@ -134,10 +134,9 @@ group_of:
         rts
 
 | Group per key, 4 bits each: instrument 0 keys 21-108, then instrument 1 ...
-| (even index in the high nibble). MUTE_TABLE_SIZE bytes right after the code,
-| not part of the assembled image: the code area installer clears it and
-| fills it from the ranges set at build time (tools/mkcodearea.py --groups).
-| Later: edited from the front panel and saved with the instrument.
+| (even index in the high nibble). MUTE_TABLE_SIZE bytes right after the
+| code; src/codearea.s reserves them and tools/mkcodearea.py --groups fills
+| them in. Later: edited from the front panel and saved with the instrument.
         .equ    MUTE_TABLE_SIZE, 8*NKEYS/2
         .balign 2
         .globl  mute_table

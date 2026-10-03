@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Build the code-area patch (src/codearea.s): installer + payload in sample RAM.
+"""Build the code-area patch: our resident code in the top of sample RAM.
 
-  mkcodearea.py OS.bin -o PATCH.json [--groups SPEC]
+  mkcodearea.py OS.bin -o PATCH.json [--groups SPEC] [--area BYTES]
                 [--disk STOCK.ede|STOCK.hfe OUT.img|OUT.ede|OUT.hfe]
 
-The patch has two edits: the staging bytes at STAGE (zeros in the stock OS)
-and the boot trampoline at 0xFF832E, which now jumps to the installer. The
-installer itself writes the hook jsr's at boot (see src/codearea.s).
+The patch has three edits to the OS file:
+  * the loader (src/loader.s) in a zero run at 0xFFC994,
+  * the boot trampoline at 0xFF832E, which now jumps to the loader,
+  * the code image (src/codearea.s) in the empty overlay-3 slot (disk
+    blocks 159-174), which the loader reads into the code area at boot.
+The loader writes the hook jsr's at boot.
 
 --groups sets mute groups per key, comma separated:
     I=G          every key of instrument I (1-8) in group G (0 = none, 1-15)
@@ -28,15 +31,20 @@ sys.path.insert(0, os.path.dirname(__file__))
 import epstool  # noqa: E402
 import mkhook  # noqa: E402
 
-SRC = os.path.join(os.path.dirname(__file__), "..", "src", "codearea.s")
-STAGE = 0xFFC994          # task stacks, zeros in the stock OS (src/codearea.s)
-STACK_LO = 0xFFCA44       # install code ends here: the init stack is below 0xFFCA84
+SRCDIR = os.path.join(os.path.dirname(__file__), "..", "src")
+LOADER_SRC = os.path.join(SRCDIR, "loader.s")
+IMAGE_SRC = os.path.join(SRCDIR, "codearea.s")
+STAGE = 0xFFC994          # bottom of the init task's stack, zeros in the stock OS
+STACK_LO = 0xFFCA64       # the loader ends here: the OS stack (0xFFCA84 down) is
+                          # used above it until the loader switches stacks
 INIT_STACK = 0xFFCA84
-STAGE_LIMIT = 0xFFCB94    # the boot ROM's kernel builds its task records and
-                          # message buffers from here up before the OS entry runs
-AREA_SIZE = 1024
+AREA_SIZE = 4096          # default code area (top of sample RAM)
+OVERLAY_WINDOW = 0xFFE000
+IMAGE_BLOCK = 159         # overlay 3's slot in the OS file (file offset 0x12000)
+IMAGE_MAX_BLOCKS = 16
 TRAMPOLINE = 0xFF832E
 TRAMPOLINE_STOCK = "4ef900c08490"
+TRAP10_STOCK = "4ef895d8"     # 0xFF832A: trap #10's target, borrowed by the loader
 
 
 KEY_LO, NKEYS = 21, 88
@@ -93,58 +101,59 @@ def group_table(groups):
     return bytes(t)
 
 
-def group_ranges(groups):
-    """{(instrument, key): group} -> the installer's range list (src/codearea.s):
-    index.w (instrument*88 + key-21), keys-1.b, group.b per run of keys with the
-    same group, then index -1."""
-    out, run = bytearray(), None
-    for i in range(8 * NKEYS):
-        g = groups.get((i // NKEYS, KEY_LO + i % NKEYS), 0)
-        if run and g == run[2] and i == run[0] + run[1] and run[1] < 256:
-            run[1] += 1
-            continue
-        if run:
-            out += run[0].to_bytes(2, "big") + bytes([run[1] - 1, run[2]])
-        run = [i, 1, g] if g else None
-    if run:
-        out += run[0].to_bytes(2, "big") + bytes([run[1] - 1, run[2]])
-    return bytes(out) + b"\xff\xff"
-
-
 MUTE_TABLE_SIZE = 8 * NKEYS // 2
 
 
-def build(os_bin, groups=""):
+def build_image(groups):
+    """Stage 2 (src/codearea.s) at offset 0, mute table filled in and the
+    checksum set so all words sum to 0. Returns (bytes, symbols)."""
+    code, syms = mkhook.assemble(IMAGE_SRC, 0, "image")
+    table = group_table(groups)
+    off = syms["mute_table"]
+    code[off:off + len(table)] = table
+    if len(code) != syms["image_end"] or len(code) % 2:
+        raise ValueError("image length mismatch")
+    total = sum(int.from_bytes(code[i:i + 2], "big") for i in range(0, len(code), 2))
+    code[syms["checksum"]:syms["checksum"] + 2] = ((-total) & 0xFFFF).to_bytes(2, "big")
+    return bytes(code), syms
+
+
+def build(os_bin, groups="", area_size=None):
     if not isinstance(groups, dict):
         groups = parse_groups(groups)
-    ranges = group_ranges(groups)
-    code, syms = mkhook.assemble(SRC, STAGE, "install", {"GROUPS_SPACE": len(ranges) - 2})
-    off = syms["groups"] - STAGE
-    code[off:off + len(ranges)] = ranges
-    payload = syms["payload_end"] - syms["payload"]
+    image, isyms = build_image(groups)
+    blocks = (len(image) + 511) // 512
+    if blocks > IMAGE_MAX_BLOCKS:
+        raise ValueError(f"image is {len(image)} bytes, the overlay-3 slot holds "
+                         f"{IMAGE_MAX_BLOCKS * 512}")
+    # whole blocks are read into the area, with the loader's stack above them
+    area = max(area_size or AREA_SIZE, blocks * 512 + 512)
+    if area % 512:
+        raise ValueError("area size must be a multiple of 512")
+    loader, syms = mkhook.assemble(LOADER_SRC, STAGE, "install", {
+        "STAGE2_BLOCK": IMAGE_BLOCK, "STAGE2_BLOCKS": blocks, "AREA_SIZE": area})
     if syms["install_end"] > STACK_LO:
-        raise ValueError(f"install code ends at {syms['install_end']:#x}, past {STACK_LO:#x}")
-    if STAGE + len(code) > STAGE_LIMIT:
-        raise ValueError(f"staging overflow: {syms['stage_end'] - INIT_STACK} bytes above "
-                         f"the init stack, room for {STAGE_LIMIT - INIT_STACK} "
-                         f"(fewer key ranges in --groups?)")
-    if payload + MUTE_TABLE_SIZE > AREA_SIZE:
-        raise ValueError(f"payload is {payload} + {MUTE_TABLE_SIZE} bytes, area is {AREA_SIZE}")
+        raise ValueError(f"loader ends at {syms['install_end']:#x}, past {STACK_LO:#x}")
     so = epstool.addr_to_offset(STAGE)
-    if any(os_bin[so:so + len(code)]):
+    if any(os_bin[so:so + len(loader)]):
         raise ValueError("staging bytes are not zero in this OS")
     to = epstool.addr_to_offset(TRAMPOLINE)
-    if os_bin[to:to + 6].hex() != TRAMPOLINE_STOCK:
-        raise ValueError("trampoline at 0xFF832E is not stock")
+    if os_bin[to - 4:to + 6].hex() != TRAP10_STOCK + TRAMPOLINE_STOCK:
+        raise ValueError("trap #10 jump / trampoline at 0xFF832A is not stock")
+    io = epstool.addr_to_offset(OVERLAY_WINDOW, 3)
+    fill = epstool.FILL[:2] * (len(image) // 2)
+    if os_bin[io:io + len(image)] != fill:
+        raise ValueError("overlay-3 slot of this OS is not empty")
     patch = {"name": "codearea", "edits": [
-        {"addr": f"0x{STAGE:06X}", "expect": "00" * len(code), "data": code.hex()},
+        {"addr": f"0x{STAGE:06X}", "expect": "00" * len(loader), "data": loader.hex()},
         {"addr": f"0x{TRAMPOLINE:06X}", "expect": TRAMPOLINE_STOCK,
          "data": "4ef9" + STAGE.to_bytes(4, "big").hex()},
+        {"addr": f"0x{OVERLAY_WINDOW:06X}", "overlay": 3, "expect": fill.hex(),
+         "data": image.hex()},
     ]}
-    info = {"stage_bytes": len(code), "install_end": syms["install_end"],
-            "stage_end": syms["stage_end"], "payload": syms["payload"], "payload_bytes": payload, "ranges": len(ranges) // 4,
-            "payload_offsets": {k: v - syms["payload"] for k, v in syms.items()
-                                if syms["payload"] <= v < syms["payload_end"]}}
+    info = {"loader_bytes": len(loader), "install_end": syms["install_end"],
+            "image_bytes": len(image), "blocks": blocks,
+            "area_size": area, "image": image, "image_offsets": isyms}
     return patch, info
 
 
@@ -153,17 +162,19 @@ def main():
     ap.add_argument("os")
     ap.add_argument("-o", "--out", required=True)
     ap.add_argument("--groups", default="")
+    ap.add_argument("--area", type=int, default=AREA_SIZE,
+                    help=f"code area size in bytes (default {AREA_SIZE})")
     ap.add_argument("--disk", nargs=2, metavar=("STOCK", "OUT"))
     a = ap.parse_args()
     os_bin = open(a.os, "rb").read()
     groups = parse_groups(a.groups)
-    patch, info = build(os_bin, groups)
+    patch, info = build(os_bin, groups, a.area)
     json.dump(patch, open(a.out, "w"), indent=1)
     used = sorted({g for g in groups.values() if g})
-    print(f"{a.out}: install {info['install_end'] - STAGE}/{STACK_LO - STAGE} bytes, "
-          f"staged {info['stage_end'] - INIT_STACK}/{STAGE_LIMIT - INIT_STACK}, payload "
-          f"{info['payload_bytes'] + MUTE_TABLE_SIZE}/{AREA_SIZE}, {info['ranges']} ranges, {sum(1 for g in groups.values() if g)} "
-          f"keys in groups {used}")
+    print(f"{a.out}: loader {info['install_end'] - STAGE}/{STACK_LO - STAGE} bytes, "
+          f"image {info['image_bytes']} bytes ({info['blocks']} blocks of "
+          f"{IMAGE_MAX_BLOCKS}), code area {info['area_size']} bytes, "
+          f"{sum(1 for g in groups.values() if g)} keys in groups {used}")
     if a.disk:
         stock, out = a.disk
         img = epstool.load_image(stock)

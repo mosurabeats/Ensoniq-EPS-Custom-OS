@@ -34,8 +34,10 @@ python3 tools/mkcodearea.py build/eps_os_249.bin -o build/test/codearea_mute.jso
 > expected (`mame/test_mutegroups.py`). What MAME can't tell us is whether
 > the real 68000 board runs code from sample RAM, and how it sounds.
 
-**What it checks:** that the EPS can run our code from the top 1 KB of
-sample RAM (the code area), and that mute groups work there.
+**What it checks:** that the EPS can load our code from the disk at boot
+into the top 4 KB of sample RAM (the code area), run it there, and that
+mute groups work. Boot takes about a second longer than stock (the drive
+spins up again to read our code).
 
 The disk is stock OS 2.49 plus the code area, with per-key mute groups set
 so that any sounds work (middle C = C4):
@@ -62,16 +64,21 @@ so that any sounds work (middle C = C4):
 5. Hold a long note on instrument 1, then play instrument 3: the instrument
    1 note stops (and the other way round).
 6. Instruments 4–8 should behave exactly like the stock OS.
-7. Optional: sample something short and play it back. Sample memory is 1 KB
+7. Optional: sample something short and play it back. Sample memory is 4 KB
    smaller than stock, which should make no audible difference.
 
 **What to report:** did it boot (step 1), and steps 3–6 (works / doesn't /
 anything odd: clicks, hangs, wrong voices cut). Also tell us whether you have
 a 2x or 4x memory expander, or none.
 
-**If step 1 fails** the 68000 can't run code from sample RAM, or something
-in the boot sequence differs from the emulator. Then we know to keep code in
-OS RAM instead, and nothing else on the disk matters.
+**If step 1 fails** something in the boot sequence differs from MAME (the
+disk read at boot, or running code from sample RAM). Write down what the
+display shows; boot your stock disk to recover.
+
+**If it boots but nothing gets cut**, our code didn't load: the loader
+couldn't read it from the disk (or the image failed its check) and the EPS
+fell back to stock behaviour. Tell us; that's a disk-read problem, not a
+mute-group one.
 
 ## Drum disk (`EPS249_DRUMS`)
 

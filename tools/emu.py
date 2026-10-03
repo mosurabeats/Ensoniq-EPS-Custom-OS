@@ -98,6 +98,7 @@ class EPS:
         with open(rom_path, "rb") as f:
             uc.mem_write(ROM_BASE, f.read())
         self.load_os()
+        self.overlay = None
         if overlay is not None:
             self.load_overlay(overlay)
         self._stubs = {}
@@ -121,11 +122,15 @@ class EPS:
     def load_overlay(self, n):
         off = epstool.OVERLAY_FILE_BASE + n * epstool.OVERLAY_SIZE
         self.write(epstool.OVERLAY_WINDOW, bytes(self.os[off:off + epstool.OVERLAY_SIZE]))
+        self.overlay = n
 
     def apply_patch(self, patch):
-        """Apply an epstool patch dict to memory (after checking 'expect')."""
+        """Apply an epstool patch dict to memory (after checking 'expect').
+        Edits to an overlay that isn't in the window change only the file."""
         for e in patch["edits"]:
             addr = int(e["addr"], 16)
+            if "overlay" in e and e["overlay"] != self.overlay:
+                continue
             data = bytes.fromhex(e["data"])
             if "expect" in e and addr >= RAM_BASE:
                 have = self.read(addr, len(data)).hex()
@@ -190,8 +195,27 @@ class EPS:
             self.set_reg("sp", sp + 4)
 
     def _on_intr(self, uc, intno, _):
+        """Unicorn leaves exceptions to us. trap #n: vector from the boot ROM
+        (the CPU reads vectors in supervisor mode, which sees the ROM), push
+        the return pc and sr, supervisor mode. rte (Unicorn's 256): pop them.
+        Unicorn swaps a7 between USP and SSP when S changes; the supervisor
+        stack starts on the caller's stack. Anything else is an error."""
         pc = uc.reg_read(UC_M68K_REG_PC)
-        raise EmuError(f"CPU exception {intno} at pc={pc:#x}")
+        sr = uc.reg_read(UC_M68K_REG_SR)
+        sp = self.reg("sp")
+        if 32 <= intno < 48:
+            sp -= 6
+            self.write(sp, sr.to_bytes(2, "big") + (pc + 2).to_bytes(4, "big"))
+            uc.reg_write(UC_M68K_REG_SR, sr | 0x2000)   # swaps a7 to the SSP,
+            self.set_reg("sp", sp)                     # which we put here
+            uc.reg_write(UC_M68K_REG_PC, self.rl(ROM_BASE + 4 * intno))
+            self.calls.append((("trap", intno - 32), self.regs()))
+        elif intno == 256:
+            uc.reg_write(UC_M68K_REG_SR, self.rw(sp))
+            uc.reg_write(UC_M68K_REG_PC, self.rl(sp + 2))
+            self.set_reg("sp", sp + 6)
+        else:
+            raise EmuError(f"CPU exception {intno} at pc={pc:#x}")
 
     def run_until(self, start, until, max_insns=100_000, **regs):
         """Execute from start until pc == until (for checking code fragments)."""

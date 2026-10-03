@@ -170,23 +170,48 @@ total.
 
 ### Code area (our code in sample RAM)
 
-`src/codearea.s` takes the top 1 KB of physical sample RAM for our resident
-code (`tools/mkcodearea.py` builds it):
+Our resident code runs from the top of physical sample RAM (4 KB by
+default). It comes in two parts, built by `tools/mkcodearea.py`:
 
-1. The patch points `0xFF832E` at an installer staged in a zero run of the
-   OS file (`0xFFC994`, the task stacks; see below). Since the OS entry calls
-   it first, nothing else in the OS has run yet.
-2. The installer runs `0xC08490`, subtracts 1 KB from `0xFF166A` and re-runs
-   `0xC084AC`. The heap, its header and the saved copies all shrink by 1 KB
-   the ROM's own way, and the system block moves 1 KB down.
-3. It copies the payload to the top 1 KB (`0x5FFC00` / `0x67FC00` /
-   `0x7FFC00`), restores the trampoline, and writes `jsr` into each hook site
-   whose stock bytes match (skipping any that don't).
-4. It jumps to the copy, which zeroes the staging bytes and returns to the
-   OS entry with the ROM's registers. After that, OS RAM matches a stock boot
-   except for the bounds (1 KB less) and the hook sites.
+* **The loader** (`src/loader.s`, about 200 bytes) sits in a zero run of the
+  OS file at `0xFFC994`, and the patch points the trampoline `0xFF832E` at it.
+* **The image** (`src/codearea.s`: header, init, hook table, mute groups,
+  later swing and loop recording) sits in the OS file's empty **overlay-3
+  slot**: file offset `0x12000`, disk blocks 159–174, 8 KB. The OS only
+  loads overlay n when a command asks for it (from block 16·(n+7)−1), and
+  no command uses overlay 3. Being inside the OS file, the image travels
+  with it.
 
-**Where the staged bytes can go.** The zero run at `0xFFC994` is not free
+At boot the OS entry's first instruction calls the trampoline, before any
+other OS code runs. The loader then:
+
+1. Runs the ROM sizing (`0xC08490`), subtracts the area from the heap size
+   (`0xFF166A`), and re-runs `0xC084AC`. The heap, its header and the saved
+   copies shrink the ROM's own way; the system block moves down.
+2. Switches to a stack at the top of the area, so it barely uses the OS's
+   (16 bytes measured).
+3. Reads the image's blocks into the area with the boot loader's own block
+   read (`0xC0B55C`: block in `0x228`, destination in `0x22C`, error in
+   `0x2C8`, five retries). Two things have to be as during boot:
+   * **The drive must be selected.** The ROM deselects it after loading the
+     OS, so the loader calls `0xC0A5E0` (select, about 0.75 s spin-up wait)
+     and `0xC0A5F4` (deselect) around the reads.
+   * **Interrupts must be masked.** The read polls the FDC, and with
+     interrupts on it loses bytes (MAME: error 4 on the first block). The
+     OS entry runs in user mode, so the loader gets into supervisor mode
+     through trap #10. Its vector points into OS RAM (`0xFF832A`,
+     `jmp 0x95D8.w`): the loader puts `jmp super.w` there for one call,
+     masks interrupts in `super`, reads, `rte`, and puts the jump back.
+4. Checks the image ("EPS!", length, all words summing to 0) and calls its
+   `init`, which writes `jsr` into each hook site whose stock bytes still
+   match. On a read error or a bad image there are no hooks: the EPS boots
+   as stock, minus the area's bytes of sample memory.
+5. Restores the trampoline and returns to the OS entry with the ROM
+   sizing's registers.
+
+Boot takes about a second longer (the spin-up wait and the reads).
+
+**Where the loader can go.** The zero run at `0xFFC994` is not free
 memory: it holds the task stacks. The OS's task table at `0xFFBEDC` gives
 (stack top, entry) per task: init `0xFFCA84`/`0xFF171E`, voice
 `0xFFCAFC`/`0xFFAC14`, `0xFFCB74`/`0xFF583A`, `0xFFCB94`/`0xFFB1D0`. The
@@ -194,29 +219,22 @@ header at `0xFF0140` points the kernel at its other structures: task records
 from `0xFFCB94`, the message buffer pool `0xFFCBEC–0xFFCFF4`, the supervisor
 stack top `0xFFC960`. The boot ROM builds the task records and buffer pool
 before it jumps to the OS entry. The entry then runs as the init task with
-its user stack at `0xFFCA84`, and the other tasks start when it first yields.
-So at install time:
+its user stack at `0xFFCA84`. So the loader lives at the bottom of the init
+stack, `0xFFC994–0xFFCA63`, and the 32 bytes below `0xFFCA84` stay free
+for the OS entry's `jsr` and the two ROM calls made before the stack switch.
 
-| Range | Use while installing | Staged there |
-|---|---|---|
-| `0xFFC994–0xFFCA43` | bottom of the init stack (not reached) | install code |
-| `0xFFCA44–0xFFCA83` | init stack: OS entry `jsr`, our `movem`, ROM calls (40 of 64 bytes used) | nothing |
-| `0xFFCA84–0xFFCB93` | other tasks' stacks, not started yet | payload, hook table, group ranges |
-| `0xFFCB94` up | kernel task records, message buffers | must not touch |
+History: the first build staged the whole payload in these stacks and
+copied it out. It crashed in MAME: the init stack overwrote the payload
+before the copy (illegal instruction), and an earlier variant zeroed the
+kernel's buffers (ERROR 137). The second build fitted, but left only 176 +
+272 bytes, so the code moved to the overlay-3 slot.
 
-The first build staged everything from `0xFFC994` upward. It crashed in MAME:
-the init stack overwrote the payload before it was copied (illegal
-instruction at the code area), and an earlier variant zeroed the kernel's
-buffers (ERROR 137). The emulator now runs the install on the real stack
-with the kernel area filled in, so both mistakes fail the tests.
-
-The budget is tight: install code 168/176 bytes, payload + hooks + ranges
-252/272 (room for 5 more mute-group key ranges). Further features need a
-second stage that loads more code from disk (see ROADMAP).
-
-The emulator test (`tests/test_codearea.py`) checks this for all three memory
-configs and both boot ROMs. MAME boots the test disk to the main loop with
-the hook installed (`mame/run.sh`, docs/MAME.md). Not yet checked on
+`tests/test_codearea.py` runs the loader on the real init stack, with the
+kernel's data above it, garbage in sample RAM, and the ROM block read
+stubbed to serve the disk, for all three memory configs and both boot
+ROMs. It also checks that reads run with interrupts masked, the OS-stack
+use, a read error, and a corrupted image. MAME boots the drum disk with the
+image loaded from disk and the mute groups working. Not yet checked on
 hardware: that the 68000 runs code from sample RAM (first hardware test).
 
 ### Sampling (overlay 2)

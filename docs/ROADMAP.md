@@ -169,8 +169,9 @@ instruments with per-key wavesamples.
 | 7 | Note repeat while recording (held key repeats at the grid, swung) | rolls | code area, sequencer clock |
 | 8 | Very last: sampling crunch (stock FILTER CUTOFF 20.0 KHZ at low rates first, then filter OUT), S900 filter, render effects | tone | overlay 2 / 3 |
 
-The code area is 1 KB (556 bytes used by per-key mute groups). If 2–7 outgrow it, the reserve can
-grow (a constant in `src/codearea.s`) at the cost of sample memory.
+The code area is 4 KB (about 600 bytes used by mute groups); its image can
+grow to 8 KB on disk (the overlay-3 slot), and the area can grow further
+(`mkcodearea.py --area`) at the cost of sample memory.
 
 ### 5. CHOP: automatic non-destructive chopping
 
@@ -267,11 +268,11 @@ command. Each effect gets an emulator test against a Python reference, like
 ## Shared blocker: space for new code — solved by the code area
 
 Resident RAM (`0xFF1600–0xFFDFFF`) is full. Our resident code now lives in
-the **top 1 KB of sample RAM**, reserved at boot (ANALYSIS.md → Code area;
-`src/codearea.s`, `tools/mkcodearea.py`). The payload is position
-independent; the installer writes the hook jumps for whichever expander is
-fitted. Cost: 1 KB of sample memory. Mute groups use 572 bytes of it
-(352 of them the per-key table, built at boot).
+the **top 4 KB of sample RAM**, loaded at boot from the OS file's
+overlay-3 slot (ANALYSIS.md → Code area; `src/loader.s`, `src/codearea.s`,
+`tools/mkcodearea.py`). The image is position independent; its init
+writes the hook jumps for whichever expander is fitted. Cost: 4 KB of sample memory (`--area`). Mute groups use about
+600 bytes of it (352 of them the per-key table).
 
 | Status | |
 |---|---|
@@ -279,13 +280,9 @@ fitted. Cost: 1 KB of sample memory. Mute groups use 572 bytes of it
 | MAME | test disk boots to the main loop with the hook installed; with the TR 8O8 kit loaded from the panel, mono and per-key groups cut voices as designed (`mame/test_mutegroups.py`) |
 | Hardware | **test 1 pending**: does the 68000 run code from sample RAM? (docs/HARDWARE_TESTS.md) |
 
-**Next blocker: staging space.** The code is staged in the task stacks
-(ANALYSIS.md → Code area). After the MAME fix only 176 + 272 bytes there are
-usable, and mute groups fill most of it. Before swing and loop recording,
-the installer needs a **second stage**: a small loader that reads more code
-from spare disk blocks into the code area (through the boot ROM's block
-read, which is already set up at that point), with the code area grown to a
-few KB. The OS disk has room: overlay 3's 16 blocks are empty.
+**Space: solved with a second stage.** The image lives in the OS file's
+empty overlay-3 slot (8 KB) and a small loader reads it into a 4 KB code
+area at boot (ANALYSIS.md → Code area). Mute groups use about 600 bytes.
 
 Other options measured earlier, kept for reference:
 
@@ -325,7 +322,7 @@ expanded unit.
 | M1 | Memory layout: resident part, overlays, stack, voice engine | **done** (see ANALYSIS.md) |
 | M2 | MIDI-out debug patch on hardware: dump sample bounds and memory size from an expanded EPS | next |
 | M2b | Code location for resident hooks | code area in sample RAM; emulator- and MAME-tested, hardware test 1 |
-| M2c | Second-stage loader (code from disk blocks, bigger code area) | next: needed before swing / loop recording |
+| M2c | Second-stage loader (code from disk blocks, bigger code area) | **done**: image in the overlay-3 slot, 4 KB area; emulator- and MAME-tested |
 | M3 | Mute groups v1 (groups set at build time) on hardware | passes in MAME with a real kit; test disk ready (hardware test 1) |
 | M4 | Display/parameter system decoded; mute group editable from the panel | messages + commands decoded from the boot ROM |
 | M5 | Filter probe on hardware → filter OUT | try stock 20.0 KHZ first; 16 probe disks ready |

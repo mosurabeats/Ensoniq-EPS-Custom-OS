@@ -39,8 +39,9 @@ def assemble(src, org, entry, defsyms=None):
         syms = {}
         for line in subprocess.run(["m68k-linux-gnu-nm", elf], capture_output=True,
                                    text=True, check=True).stdout.splitlines():
-            v, _, name = line.split()
-            syms[name] = int(v, 16)
+            parts = line.split()
+            if len(parts) == 3:                 # skip undefined ("U name")
+                syms[parts[2]] = int(parts[0], 16)
         with open(binf, "rb") as f:
             return bytearray(f.read()), syms
 

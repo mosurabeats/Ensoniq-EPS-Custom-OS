@@ -71,7 +71,7 @@ a disk (reads `.img`, `.ede`, `.hfe` and Gotek `.gkh`).
 
 ## Code area and test disks
 
-Our resident code runs from the top 1 KB of sample RAM, installed at boot
+Our resident code runs from the top 4 KB of sample RAM, loaded at boot from the OS file
 (docs/ANALYSIS.md → Code area). Build a test disk with mute groups:
 
 ```sh
