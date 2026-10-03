@@ -418,6 +418,43 @@ Descriptors at ROM `0xC028DC`: display handler, RAM variable, message, word:
 | `0xFF0210` | (`0x19FC`, pre-trigger) | |
 | `0xFF0211` | INPUT LEVEL (`0x1B6C`) | ROM `0x3AAE`: MIC / LINE |
 
+### Kernel and tasks (boot ROM)
+
+The CPU reads its vectors in supervisor mode, which sees the boot ROM, so the
+OS file's vector block is empty and the kernel lives in the ROM. Traps 0–9
+and 12–15 go to `0xC073xx–0xC076xx`; traps 10/11 point back into the OS
+(`0xFF832A`/`0xFF8326`, display services). Level-1 autovector `0xC0937C`.
+
+| Trap | Service |
+|---|---|
+| 0 | System error, code in d0 (the numbers in the service manual) |
+| 1 | Yield (save context, reschedule) |
+| 2 | Message buffer available? (carry set if not) |
+| 3 | Allocate a message buffer into a5 (none left: error 144) |
+| 4 | Free buffer a5 |
+| 5, 7 | Wait with timeout |
+| 6 | Receive: next message for the current task into a5 (waits if none) |
+| 8 | Set the current task's timer (d0) |
+| 9 | Send message a5 to the task whose control block is a1 |
+| 12 | Queue a5 on a1 (used for MIDI out, `0xFFC97A`) |
+
+Current task control block pointer at `0x0134`; free message list at
+`0x0136`. A message has a type word at `+2` and data from `+4`. Task blocks
+seen as send targets: `0xFFCB94`, `0xFFCBAA`, `0xFFCBC0` (22 bytes apart).
+
+* **Voice task** (loop `0xFFAC22`): receives a message, uses the type as an
+  even offset into `0xFFAC3A`: 0 → note-on `0xFFAC4E`, 2 → `0xFFAE12`,
+  4 → `0xFFAEA6`, 10 → note-off `0xFFAEAC`, 12 → `0xFFAF4E`; 6 and 8 →
+  system error 16 ("VC unknown message").
+* **Sequencer playback** builds note messages at `0xFF654C` (type 8 or 10;
+  `+4` key, `+5`, `+6` velocity, `+7` instrument bit) and sends them to
+  `0xFFCBAA`, plus MIDI out through trap 12 when `0xFF16A6` enables it.
+* The sequencer is a state machine: `0xFF8028`/`0xFF802A` hold state handler
+  addresses (`0xFF58D6`, `0xFF591E`, `0xFF5942` …); LOOPED record mode
+  (`0xFF815F` = 2) branches off them; `0xFF815E` = keep OLD/NEW.
+* Still to find: the task that receives keyboard notes while recording and
+  writes them into the new take (the hook point for record-time swing).
+
 ### Unused and unfinished bits
 
 Signs of features that were started or planned but aren't in OS 2.49:
