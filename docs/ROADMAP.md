@@ -133,8 +133,19 @@ Overlay 0 is full, so the new code needs space (see below) and a jump in.
 | d | Swing patch, style/amount set at build time (`--set`, like mute groups v1); emulator tests per style | |
 | e | Front-panel setting (a second prompt after "QUANTIZE TO 1/") | needs the display routines |
 
-The EPS has no record-time quantize to extend (no such text in the ROM), so
-swing-on-record would be new code. It comes after the command works.
+**Target workflow: MPC-style loop recording.** Notes are corrected (quantize
++ swing + strength) as they are recorded, so the next loop pass already plays
+them on the swung grid, and there is no KEEP OLD/NEW prompt. Pieces:
+
+| Piece | What we know | Status |
+|---|---|---|
+| Loop recording | RECORD MODE (`0xFF815F`, ROM descriptor `0xC0247C`) = REPLACE (0) / ADD (1) / **LOOPED** (2); the sequencer branches on it at `0xFF5FD8`, `0xFF6228`, `0xFF6730` … | check whether LOOPED already plays this pass's notes on the next pass |
+| Record-time correction | No record-time quantize in the stock OS. Needs a hook where a recorded note gets its time; snap it with the same math as QUANTIZE TRACK | find the note-record routine; needs the code area (real-time code) |
+| Notes moved later than "now" | Swing delays notes, so a corrected note can land just after the record position | design once the record routine is known |
+| No KEEP prompt | Prompt routine `0xFFA4EC` ("KEEP = OLD NEW", returns d0 = 4 + choice `0xFFC2EC`) is shared with sample edits (overlay 1 calls it). The sequencer's use is `0xFF2702–0xFF2742`, which sets `0xFF815E` = 0 (OLD) / 1 (NEW) | patch only that caller: always NEW, no prompt |
+
+QUANTIZE TRACK with swing (steps c–e) stays useful for fixing a track after
+the fact, and shares the math with the record-time hook.
 
 ## Shared blocker: space for new code
 
