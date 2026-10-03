@@ -130,7 +130,7 @@ Overlay 2 holds the sampling code along with the disk utilities.
 |---|---|
 | `0xFF020F` | Sample rate index (default 35). 40 rates, 6.25–52.1 kHz |
 | `0xFF0210` | Sampling parameter, ×2000 when used (default 0) |
-| `0xFF0211` | Flag (default 1). When 0, OP7 is driven the other way |
+| `0xFF0211` | Flag (default 1). When 0, OP7 is driven the other way. Probably INPUT LEVEL = MIC/LINE (service manual sampling test) |
 | `0xFF0212` | Filter cutoff index (default 11) |
 | `0xC06FFE` (ROM) | 40-byte table: rate index → default filter index |
 | `0xC07026` (ROM) | 40-byte table: rate index → sample-clock divisor |
@@ -145,7 +145,28 @@ Overlay 2 holds the sampling code along with the disk utilities.
 The resident analog-control scanner (`0xFFBE46`, 6 × 24-byte records at
 `0xFFC334`) also drives OP4–OP6 to select which front-panel analog input to
 read. Sampling disables that interrupt (IMR = `0x20`) before using the same
-lines for the filter, so the lines are probably shared or latched.
+lines for the filter, so the lines are probably shared or latched. The
+service manual's analog test page lists exactly six analog inputs (pitch
+wheel, mod wheel, volume slider, CV pedal, data slider, patch-select
+buttons), which matches the scanner's six records. So OP4–OP6 are definitely
+the analog-mux select lines. How they also set the filter needs the
+schematic.
+
+### From the EPS/EPS-M service manual (P/N 9312 000 701-B)
+
+* No schematics; it's a module-swap manual. Boot EPROMs: **U26 = LOWER, U27
+  = UPPER** on the main board. Boot ROM v2.0+ is needed for SCSI and OS ≥ 2.00.
+* Two main-board revisions: **7501**, and **10002** (serial ≥ 16582 /
+  240 V ≥ 502603: new layout, gate array, different RAM chips). Filter and
+  input behaviour should be checked on the board the tester has.
+* 2x expander: FREE SYSTEM BLOCKS > 2000; 4x: > 4000.
+* The keyboard/KPC is a 68HC11 on the DUART (error 32 = DUART overrun from
+  the MC68HC11), and all display traffic goes through it.
+* System error codes: 16 VC unknown message, 17 voice list corrupted,
+  49 parser bad parameter type, 56/57 memory allocation, 63 RAM, 64 no SCSI,
+  128–139 CPU exceptions, 144 out of system buffers, **145 unknown sampling
+  interrupt**, 192 unknown sequencer event, 194 no sequencer event buffers.
+  Useful for diagnosing crashes in patched OSes.
 
 ### Sequencer (partial)
 
