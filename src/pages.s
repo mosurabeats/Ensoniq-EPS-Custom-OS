@@ -27,11 +27,12 @@
 | 0xFF33EA (display) and 0xFF3B1E (edit), hooked the same way, so our
 | tables can be ours too.
 |
-| Wavesample page 6 (WS VOLUME, PAN, fades, VOLUME MOD) gets MUTE GROUP
-| (0-15) after VOLUME MOD, stored in byte 0x11E of the wavesample record:
+| Wavesample page 6 (the 6 Amp button: WS VOLUME, PAN, fades, VOLUME MOD)
+| gets MUTE GROUP (0-15), stored in byte 0x11E of the wavesample record:
 | the last header word, 0 in every factory wavesample we have and not
 | used by the OS. The record is saved with the instrument as it is in
-| memory.
+| memory. FULL LEVEL and ONE-SHOT (OFF/ON, src/voice.s, bytes 0x11F and
+| 0x11D) come before it: VOLUME MOD, FULL LEVEL, ONE-SHOT, MUTE GROUP.
 |
 | The sequencer page (TEMPO ... RECORD MODE) gets QUANTIZE (OFF, 1/4 ...
 | 1/32T) and SWING% (50-75; below 50 is straight), for every instrument
@@ -180,6 +181,12 @@ page_init:
 slots:
         .word   0xC110                  | wavesample page 6 (the 6 Amp button)
         .long   0x2572
+        .word   full_level_desc-image   | (src/voice.s)
+        .word   0xC110                  | + ONE-SHOT
+        .long   0x2574
+        .word   one_shot_desc-image
+        .word   0xC110                  | + MUTE GROUP: last, one step back
+        .long   0x2576                  | from WS VOLUME
         .word   mute_group_desc-image
         .word   0xC0B6                  | sequencer page + 2
         .long   0x23F0
@@ -196,6 +203,21 @@ mute_group_desc:
         .word   RESV+(mute_group_label-image)
 mute_group_label:
         .asciz  "MUTE GROUP"
+        .balign 2
+full_level_desc:
+        .byte   0x09, 0x0E              | parameter 9, a choice:
+        .word   0x4DCC                  | the ROM's OFF/ON
+        .word   0x11F                   | in the wavesample record
+        .word   RESV+(full_level_label-image)
+one_shot_desc:
+        .byte   0x0A, 0x0E
+        .word   0x4DCC
+        .word   0x11D
+        .word   RESV+(one_shot_label-image)
+full_level_label:
+        .asciz  "FULL LEVEL"
+one_shot_label:
+        .asciz  "ONE-SHOT"
         .balign 2
 
 quant_desc:

@@ -1,0 +1,28 @@
+# FULL LEVEL and ONE-SHOT set on the 6 Amp page (--pages), WS=ALL: load
+# TR 8O8, Edit, 6 Amp, ◄ twice = ONE-SHOT, ▲ = ON, ◄ = FULL LEVEL, ▲ = ON.
+# Then a soft (velocity 0x20) tap on D2, the snare (a no-loop sample),
+# released after 100 ms. Buttons: docs/MAME.md (Edit 5, 6 Amp 30, ◄ 16, ▲ 10).
+10.5 8f 00    # Load
+10.65 0f 00
+11.5 a3 00    # Enter·Yes
+11.65 23 00
+12.5 82 00    # instrument 1: load TR 8O8
+12.65 02 00
+29.0 82 00    # select instrument 1
+29.15 02 00
+30.0 85 00    # Edit
+30.15 05 00
+30.6 9e 00    # 6 Amp
+30.75 1e 00
+31.2 90 00    # ◄: MUTE GROUP
+31.35 10 00
+31.8 90 00    # ◄: ONE-SHOT
+31.95 10 00
+32.4 8a 00    # ▲: ON
+32.55 0a 00
+33.0 90 00    # ◄: FULL LEVEL
+33.15 10 00
+33.6 8a 00    # ▲: ON
+33.75 0a 00
+35.0 82 20    # D2, soft
+35.1 02 40

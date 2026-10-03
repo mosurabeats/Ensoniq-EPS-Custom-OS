@@ -521,6 +521,14 @@ Descriptors at ROM `0xC028DC`: display handler, RAM variable, message, word:
     mute hook (`src/mutegroup.s`) takes the new note's group from the
     wavesample the key plays (first layer with one) and a sounding voice's
     from its wavesample (voice +22).
+  * FULL LEVEL and ONE-SHOT (OFF/ON, the ROM's own OFF/ON table) before
+    MUTE GROUP, in wavesample bytes +0x11F and +0x11D (0 in all factory
+    wavesamples; no OS or ROM code reads a word over them). `src/voice.s`:
+    FULL LEVEL makes the voice start (`0xFFB252`) use velocity 127;
+    ONE-SHOT skips the release at key-up (`0xFFAE12` walks the note's held
+    voices, release call at `0xFFAE5E`; `0xFFB13C` is a branch target, so
+    `0xFFB136` itself can't be hooked) for no-loop samples (MODE +0xEE 0
+    or 1), which then stop by themselves at the sample end.
   * QUANTIZE (choice: OFF … 1/32T) and SWING% after RECORD MODE on the
     sequencer page, in `0xFF8174`/`0xFF8175` (after the last 10-byte
     sequencer list node at `0xFF816A`; no references in the OS or ROM).

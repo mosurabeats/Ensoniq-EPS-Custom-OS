@@ -85,8 +85,9 @@ python3 tools/mkcodearea.py build/eps_os_249.bin -o build/test/codearea_mute.jso
 
 Use `.img` instead of `.hfe` as the output name for a disk to boot in MAME.
 
-Options: `--pages` (our parameters on the EPS's edit pages: MUTE GROUP on
-the 6 Amp page, QUANTIZE and SWING% on the sequencer page; with it
+Options: `--pages` (our parameters on the EPS's edit pages: FULL LEVEL,
+ONE-SHOT and MUTE GROUP on the 6 Amp page, QUANTIZE and SWING% on the
+sequencer page; with it
 `--swing 16:mpc:58` only sets their power-on values), `--undo` (RECORD while
 loop recording takes out the last notes played; on with `--swing` and
 `--pages` too), `--auto-keep` (no KEEP = OLD NEW prompt). Without `--pages`:

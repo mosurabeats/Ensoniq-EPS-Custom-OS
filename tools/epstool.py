@@ -470,7 +470,9 @@ def main():
             lo, hi = ranges.get(w, (None, None))
             keys = f"{lo}-{hi}" if lo is not None else "-"
             print(f"  WS {w:3d}  keys {keys:8s} {instfile.ws_name(data, o)!r:16s} "
-                  f"group {data[o + instfile.WS_GROUP]}")
+                  f"group {data[o + instfile.WS_GROUP]}"
+                  + ("  FULL LEVEL" if data[o + instfile.WS_FULL] else "")
+                  + ("  ONE-SHOT" if data[o + instfile.WS_ONESHOT] else ""))
     elif args.cmd == "patch":
         patch = json.load(open(args.patch))
         out = apply_patch(open(args.os, "rb").read(), patch)

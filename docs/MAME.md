@@ -162,7 +162,8 @@ python3 mame/test_swing.py        # --swing 16:mpc:58: takes land on the swung g
 python3 mame/test_undo.py         # --undo: RECORD takes out this pass's, then the
                                   # last pass's notes (mame/keys/loop_undo.txt)
 python3 mame/test_panel.py        # --pages: MUTE GROUP set on the 6 Amp page
-                                  # (mame/keys/panel_mute.txt), QUANTIZE on the
+                                  # (mame/keys/panel_mute.txt), FULL LEVEL and
+                                  # ONE-SHOT (panel_voice.txt), QUANTIZE on the
                                   # sequencer page (loop_panel_quant.txt)
 ```
 

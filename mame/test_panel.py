@@ -7,6 +7,10 @@ One --pages --auto-keep disk with the TR 8O8 kit, three runs:
   between: each note cuts the one before, a key-up cuts nothing, and every
   wavesample's byte 0x11E holds 1.
 * the same without the arrow (MUTE GROUP stays 0): nothing is cut.
+* mame/keys/panel_voice.txt: FULL LEVEL and ONE-SHOT ON (WS=ALL), then a
+  soft tap on D2 (a no-loop snare): the voice has velocity 127 and is not
+  released at key-up (it plays to its end). The same without the two
+  ▲ presses: velocity as played, released at key-up.
 * mame/keys/loop_panel_quant.txt: QUANTIZE 1/16 set on the sequencer page
   (no --swing), then loop_record.txt: the final take is on the straight
   1/16 grid (SWING% 0).
@@ -64,6 +68,38 @@ def run_mute(disk, name, keys):
     return out, frames, groups
 
 
+VOICE_LUA = """
+local ram = manager.machine.memory.shares[":osram"]
+local last = ""
+emu.register_periodic(function()
+  local t = manager.machine.time:as_double()
+  if t < 34.9 or t > 36 then return end
+  local s = ""
+  for _, sentinel in ipairs({0x16E4, 0x16DC}) do
+    local v, n = ram:read_u16(sentinel), 0
+    while v ~= sentinel and n < 24 do
+      s = s .. string.format(" [k%d v%d s%d]", ram:read_u8(v + 4), ram:read_u8(v + 8), ram:read_u8(v + 12))
+      v = ram:read_u16(v); n = n + 1
+    end
+  end
+  if s ~= last then print(string.format("VOICE %.3f%s", t, s)); last = s end
+end)
+"""
+
+
+def run_voice(disk, name, keys):
+    lua = os.path.join(T.OUT, name + ".lua")
+    open(lua, "w").write(VOICE_LUA)
+    env = dict(os.environ, KEYS=keys, RUN=os.path.join(T.OUT, "run_" + name))
+    out = T.sh(os.path.join(T.ROOT, "mame", "run.sh"), disk, "36", lua, env=env)
+    frames = []
+    for line in out.splitlines():
+        if line.startswith("VOICE "):
+            frames.append((float(line.split()[1]),
+                           [tuple(map(int, v)) for v in re.findall(r"\[k(\d+) v(\d+) s(\d+)\]", line)]))
+    return out, frames
+
+
 def killed_at(frames, key):
     """Times at which the voice of key is being killed."""
     return [t for t, v in frames if any(k == key and s == KILLING for k, _, s in v)]
@@ -88,12 +124,19 @@ def main():
     no_group = os.path.join(T.OUT, "panel_nogroup.txt")
     open(no_group, "w").write("".join(l for l in open(mute_keys) if " 8a 00" not in l
                                       and " 0a 00" not in l))
-    with ThreadPoolExecutor(3) as ex:
+    voice_keys = os.path.join(T.ROOT, "mame", "keys", "panel_voice.txt")
+    voice_off = os.path.join(T.OUT, "panel_voice_off.txt")
+    open(voice_off, "w").write("".join(l for l in open(voice_keys) if " 8a 00" not in l
+                                       and " 0a 00" not in l))
+    with ThreadPoolExecutor(5) as ex:
         f_mute = ex.submit(run_mute, disk, "panel_mute", mute_keys)
         f_none = ex.submit(run_mute, disk, "panel_nogroup", no_group)
         f_loop = ex.submit(run_loop, disk, "panel_quant")
+        f_voice = ex.submit(run_voice, disk, "panel_voice", voice_keys)
+        f_voff = ex.submit(run_voice, disk, "panel_voice_off", voice_off)
         (out, frames, groups), (_, n_frames, n_groups), (l_out, final) = \
             f_mute.result(), f_none.result(), f_loop.result()
+        (v_out, v_frames), (_, o_frames) = f_voice.result(), f_voff.result()
     ok = []
 
     def check(what, cond):
@@ -107,6 +150,17 @@ def main():
     check("key-ups cut nothing (G2 rings out)", not killed_at(frames, G2))
     check("group 0: nothing is cut", not any(s == KILLING for _, v in n_frames for _, _, s in v))
     check("group 0: bytes stay 0", n_groups == [0] * 13)
+    D2 = 38
+    vel = lambda fr: {v for _, vs in fr for k, v, _ in vs if k == D2}  # noqa: E731
+    released = lambda fr: any(s == 6 for _, vs in fr for k, _, s in vs if k == D2)  # noqa: E731
+    check("FULL LEVEL and ONE-SHOT show on the 6 Amp page", "FULL LEVEL=" in v_out and "ONE-SHOT=" in v_out)
+    check("FULL LEVEL ON: a soft hit plays at velocity 127", vel(v_frames) == {127})
+    check("FULL LEVEL OFF: the velocity as played (32)", vel(o_frames) == {32})
+    check("ONE-SHOT ON: key-up doesn't release the snare (it plays out)",
+          bool(v_frames) and not released(v_frames) and any(k == D2 for _, vs in v_frames for k, _, _ in vs))
+    check("ONE-SHOT OFF: key-up releases it", released(o_frames))
+    print("voice on: ", v_frames)
+    print("voice off:", o_frames)
     check("QUANTIZE shows on the sequencer page", "QUANTIZE=" in l_out)
     check("QUANTIZE 1/16 from the panel: final take on the straight 1/16 grid",
           bool(final) and all(t == 1 or t % 12 == 0 for t, *_ in final))

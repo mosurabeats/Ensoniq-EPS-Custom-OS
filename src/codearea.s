@@ -91,6 +91,12 @@ hooks:
         .long   0xFF3B1E                | a choice's table (edit)
         .word   choice_hook-image
         .byte   0x32,0x6B,0x00,0x02,0xB2,0xFC,0x80,0x00
+        .long   0xFFB252                | voice start: its velocity (FULL LEVEL)
+        .word   level_hook-image
+        .byte   0x10,0x38,0x16,0xB6,0x19,0x40,0x00,0x08
+        .long   0xFFAE5A                | key-up: release (ONE-SHOT)
+        .word   keyup_hook-image
+        .byte   0x3F,0x0D,0x3F,0x14,0x4E,0xB8,0xB1,0x36
         .long   0xFF3308                | show a parameter's label
         .word   label_hook-image
         .byte   0x34,0x6B,0x00,0x06,0x4E,0xB8,0x24,0x00
@@ -99,6 +105,7 @@ hooks:
 
 .if PAGES
         .include "pages.s"              | first: its tables need small offsets
+        .include "voice.s"
 .endif
         .include "mutegroup.s"
         .space  MUTE_TABLE_SIZE         | set at build time (--groups)

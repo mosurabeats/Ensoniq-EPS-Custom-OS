@@ -116,6 +116,17 @@ Data Entry slider, as for any other parameter.
     across them. Use different numbers to keep them apart.
   * A sounding note is cut when a note in the same group starts (also the
     same key again, MPC style). Releasing a key cuts nothing.
+* **FULL LEVEL** (OFF/ON) and **ONE-SHOT** (OFF/ON), on the same 6 Amp
+  page, before MUTE GROUP: from WS VOLUME, ◄ twice for ONE-SHOT, three
+  times for FULL LEVEL. WS=ALL sets them for the whole instrument; they
+  save with the instrument like the mute group.
+  * FULL LEVEL: every hit plays at full velocity (127), however hard you
+    play. (Layers switched by velocity still follow how hard you play.)
+  * ONE-SHOT: letting go of the key doesn't start the release, so the
+    sample plays to its end: no more setting a long release on every
+    sample. Only for samples without a loop (MODE FORWARD-NO LOOP or
+    BACKWARD-NO LOOP); looping samples release as usual so they can't
+    hang. Hitting the same key again still restarts it.
 * **QUANTIZE** (OFF, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T) and
   **SWING%** (50–75; below 50 = straight, only 1/8 and 1/16 swing): Edit,
   **Seq·Song**, right after RECORD MODE (◄ once from the first page gets to
@@ -130,10 +141,12 @@ Data Entry slider, as for any other parameter.
   pass before. No message on the display.
 
 **Please try and tell us:**
-1. MUTE GROUP shows on the 6 Amp page and ▲ / ▼ change it; WS=ALL
-   vs one wavesample behaves as above.
-2. **SAVE INSTRUMENT** after changing a group, power off, reload: is the
-   group still there? (MAME can't save to disk yet, so this is untested.)
+1. MUTE GROUP, FULL LEVEL and ONE-SHOT show on the 6 Amp page and ▲ / ▼
+   change them; WS=ALL vs one wavesample behaves as above. Soft hits with
+   FULL LEVEL on are as loud as hard ones; ONE-SHOT samples play out after
+   you let go.
+2. **SAVE INSTRUMENT** after changing these, power off, reload: are they
+   still set? (MAME can't save to disk yet, so this is untested.)
 3. QUANTIZE/SWING% on the Seq·Song page, and a loop recording with them.
 4. Anything on those pages that looks wrong: garbled text, the wrong
    parameter, a value that won't change, or an error/reboot.
