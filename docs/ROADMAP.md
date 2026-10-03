@@ -147,7 +147,7 @@ them on the swung grid, and there is no KEEP OLD/NEW prompt. Pieces:
 QUANTIZE TRACK with swing (steps c–e) stays useful for fixing a track after
 the fact, and shares the math with the record-time hook.
 
-## Boom-bap plan (proposed order, to confirm)
+## Boom-bap plan (agreed order)
 
 Goal: make the EPS feel like an MPC60/SP-1200 for sampling breaks, chopping,
 and loop-recording drums. What the stock OS already has: count-in (SEQ
@@ -156,21 +156,45 @@ instruments with per-key wavesamples.
 
 | # | Feature | Why | Size / where |
 |---|---|---|---|
-| 1 | Mute groups | hats, mono chops | done in emulator; test 1 |
-| 2 | MPC-style loop recording: record-time timing correct + MPC60/3000/SP-1200 swing, no KEEP prompt | the core feel | code area; in progress |
-| 3 | **Full level** per instrument (fixed velocity 127, like the MPC) | consistent drums from the keyboard | tiny hook in note-on |
-| 4 | **One-shot** per instrument (key-up ignored, sample plays through) | drums and chops always finish | small hook in note-off |
-| 5 | **Note repeat** while recording (held key repeats at the grid, swung) | hi-hat rolls | code area, sequencer clock |
+| 1 | Mute groups | hats, mono chops | done in emulator; hardware test 1 |
+| 2 | MPC-style loop recording: record-time timing correct + MPC60/3000/SP-1200 swing, **per-track swing**, no KEEP prompt | the core feel | code area; in progress |
+| 3 | **Full level** per instrument (fixed velocity 127, like the MPC) | today: edit levels/envelopes by hand | tiny hook in note-on |
+| 4 | **One-shot** per instrument (key-up ignored, sample plays through) | today: edit release/sustain by hand | small hook in note-off |
+| 5 | **CHOP** (below) | chopping by hand is tedious | overlay 3 (new command) |
 | 6 | **Erase while loop recording** (hold a button + key: that key's notes are erased as the loop passes) | fix takes without stopping | code area |
-| 7 | **CHOP**: cut a break into N slices (equal, tempo grid, or at transients) and map them to consecutive keys | SP-1200/MPC chopping in one step | overlay 3 (new command) |
-| 8 | Sampling crunch: try stock FILTER CUTOFF 20.0 KHZ at low rates first, then filter OUT if needed | SP-1200 grit | overlay 2, tiny |
-| 9 | Per-track swing amount | MPC3000-style groove per part | after 2 |
-| 10 | Ideas for later below: S900 filter, render effects (last) | tone | overlay 3 |
+| 7 | Note repeat while recording (held key repeats at the grid, swung) | rolls | code area, sequencer clock |
+| 8 | Very last: sampling crunch (stock FILTER CUTOFF 20.0 KHZ at low rates first, then filter OUT), S900 filter, render effects | tone | overlay 2 / 3 |
 
-The code area is 1 KB (120 bytes used). If 2–6 outgrow it, the reserve can
+The code area is 1 KB (120 bytes used). If 2–7 outgrow it, the reserve can
 grow (a constant in `src/codearea.s`) at the cost of sample memory.
 
-## Ideas for later (not scheduled, not being implemented)
+### 5. CHOP: automatic non-destructive chopping
+
+**Today, by hand** (the standard EPS/ASR method): COPY WAVESAMPLE with
+"COPY = PARAMETERS ONLY" to another key, set the copy's key range (and root
+key) in the layer, then move its SAMPLE START/END. Repeat per slice. It costs
+almost no memory because every copy plays the same sample data, but it takes
+many button presses per slice.
+
+**CHOP does the same in one command** (wavesample command page):
+
+| Parameter | Values |
+|---|---|
+| Slices | 2–32 |
+| Mode | EQUAL (same length), GRID (from tempo + bars, e.g. 16ths of a 2-bar break), later TRANSIENT (at hits) |
+| First key | where slice 1 goes; each next slice on the next key up |
+| Snap | move cut points to the nearest zero crossing (no clicks) |
+
+For each slice it makes a parameters-only copy of the wavesample, gives it a
+one-key range with root key = that key (so it plays at the original pitch),
+and sets start/end to the slice. The original sample data is untouched and
+shared; undo = delete the copies. Implementation plan: call the OS's own
+COPY WAVESAMPLE (parameters only) code (`0xFF4C6E`, docs/COMMANDS.md)
+instead of building wavesample records ourselves, then set the fields. Needs
+the wavesample/layer parameter layout decoded (the same work also gives
+full level and one-shot their per-instrument settings).
+
+## Ideas for later (not scheduled, not being implemented)## Ideas for later (not scheduled, not being implemented)
 
 ### S900 FILTER (render command)
 
