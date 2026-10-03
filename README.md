@@ -58,6 +58,13 @@ python3 -m unittest discover tests     # needs build/ OS + boot ROM
 `tools/emu.py` runs OS routines and our hooks in a 68000 emulator. See
 docs/ANALYSIS.md → Emulator tests.
 
+Whole-machine tests run in a patched MAME (docs/MAME.md):
+
+```sh
+mame/build.sh                                   # once: MAME's EPS driver + our fixes
+mame/run.sh build/test/EPS249_MUTETEST.img      # boot a disk, print the display
+```
+
 ## Code area and test disks
 
 Our resident code runs from the top 1 KB of sample RAM, installed at boot
@@ -65,8 +72,10 @@ Our resident code runs from the top 1 KB of sample RAM, installed at boot
 
 ```sh
 python3 tools/mkcodearea.py build/eps_os_249.bin -o build/test/codearea_mute.json \
-    --groups 1,1,2,0,0,0,0,0 --disk build/hfe/EPS249OS.hfe build/test/EPS249_MUTETEST.hfe
+    --groups "1=1,2:A0-B3=2,3=1" --disk build/hfe/EPS249OS.hfe build/test/EPS249_MUTETEST.hfe
 ```
+
+Use `.img` instead of `.hfe` as the output name for a disk to boot in MAME.
 
 `.hfe` output keeps the stock disk's track layout and works on any Gotek
 firmware. See docs/HARDWARE_TESTS.md for what to try on the EPS.

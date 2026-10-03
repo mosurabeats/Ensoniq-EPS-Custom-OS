@@ -29,8 +29,11 @@ import epstool  # noqa: E402
 import mkhook  # noqa: E402
 
 SRC = os.path.join(os.path.dirname(__file__), "..", "src", "codearea.s")
-STAGE = 0xFFC994          # zeros in the stock OS up to 0xFFCFFC (runtime buffers)
-STAGE_LIMIT = 0xFFCFFC
+STAGE = 0xFFC994          # task stacks, zeros in the stock OS (src/codearea.s)
+STACK_LO = 0xFFCA44       # install code ends here: the init stack is below 0xFFCA84
+INIT_STACK = 0xFFCA84
+STAGE_LIMIT = 0xFFCB94    # the boot ROM's kernel builds its task records and
+                          # message buffers from here up before the OS entry runs
 AREA_SIZE = 1024
 TRAMPOLINE = 0xFF832E
 TRAMPOLINE_STOCK = "4ef900c08490"
@@ -90,18 +93,43 @@ def group_table(groups):
     return bytes(t)
 
 
+def group_ranges(groups):
+    """{(instrument, key): group} -> the installer's range list (src/codearea.s):
+    index.w (instrument*88 + key-21), keys-1.b, group.b per run of keys with the
+    same group, then index -1."""
+    out, run = bytearray(), None
+    for i in range(8 * NKEYS):
+        g = groups.get((i // NKEYS, KEY_LO + i % NKEYS), 0)
+        if run and g == run[2] and i == run[0] + run[1] and run[1] < 256:
+            run[1] += 1
+            continue
+        if run:
+            out += run[0].to_bytes(2, "big") + bytes([run[1] - 1, run[2]])
+        run = [i, 1, g] if g else None
+    if run:
+        out += run[0].to_bytes(2, "big") + bytes([run[1] - 1, run[2]])
+    return bytes(out) + b"\xff\xff"
+
+
+MUTE_TABLE_SIZE = 8 * NKEYS // 2
+
+
 def build(os_bin, groups=""):
-    code, syms = mkhook.assemble(SRC, STAGE, "install")
     if not isinstance(groups, dict):
         groups = parse_groups(groups)
-    table = group_table(groups)
-    off = syms["mute_table"] - STAGE
-    code[off:off + len(table)] = table
+    ranges = group_ranges(groups)
+    code, syms = mkhook.assemble(SRC, STAGE, "install", {"GROUPS_SPACE": len(ranges) - 2})
+    off = syms["groups"] - STAGE
+    code[off:off + len(ranges)] = ranges
     payload = syms["payload_end"] - syms["payload"]
+    if syms["install_end"] > STACK_LO:
+        raise ValueError(f"install code ends at {syms['install_end']:#x}, past {STACK_LO:#x}")
     if STAGE + len(code) > STAGE_LIMIT:
-        raise ValueError(f"staging overflow: {len(code)} bytes")
-    if payload > AREA_SIZE:
-        raise ValueError(f"payload is {payload} bytes, area is {AREA_SIZE}")
+        raise ValueError(f"staging overflow: {syms['stage_end'] - INIT_STACK} bytes above "
+                         f"the init stack, room for {STAGE_LIMIT - INIT_STACK} "
+                         f"(fewer key ranges in --groups?)")
+    if payload + MUTE_TABLE_SIZE > AREA_SIZE:
+        raise ValueError(f"payload is {payload} + {MUTE_TABLE_SIZE} bytes, area is {AREA_SIZE}")
     so = epstool.addr_to_offset(STAGE)
     if any(os_bin[so:so + len(code)]):
         raise ValueError("staging bytes are not zero in this OS")
@@ -113,7 +141,8 @@ def build(os_bin, groups=""):
         {"addr": f"0x{TRAMPOLINE:06X}", "expect": TRAMPOLINE_STOCK,
          "data": "4ef9" + STAGE.to_bytes(4, "big").hex()},
     ]}
-    info = {"stage_bytes": len(code), "payload_bytes": payload,
+    info = {"stage_bytes": len(code), "install_end": syms["install_end"],
+            "stage_end": syms["stage_end"], "payload": syms["payload"], "payload_bytes": payload, "ranges": len(ranges) // 4,
             "payload_offsets": {k: v - syms["payload"] for k, v in syms.items()
                                 if syms["payload"] <= v < syms["payload_end"]}}
     return patch, info
@@ -131,8 +160,9 @@ def main():
     patch, info = build(os_bin, groups)
     json.dump(patch, open(a.out, "w"), indent=1)
     used = sorted({g for g in groups.values() if g})
-    print(f"{a.out}: {info['stage_bytes']} staging bytes, payload "
-          f"{info['payload_bytes']}/{AREA_SIZE}, {sum(1 for g in groups.values() if g)} "
+    print(f"{a.out}: install {info['install_end'] - STAGE}/{STACK_LO - STAGE} bytes, "
+          f"staged {info['stage_end'] - INIT_STACK}/{STAGE_LIMIT - INIT_STACK}, payload "
+          f"{info['payload_bytes'] + MUTE_TABLE_SIZE}/{AREA_SIZE}, {info['ranges']} ranges, {sum(1 for g in groups.values() if g)} "
           f"keys in groups {used}")
     if a.disk:
         stock, out = a.disk

@@ -174,8 +174,8 @@ total.
 code (`tools/mkcodearea.py` builds it):
 
 1. The patch points `0xFF832E` at an installer staged in a zero run of the
-   OS file (`0xFFC994`, runtime buffers). Since the OS entry calls it first,
-   nothing else in the OS has run yet.
+   OS file (`0xFFC994`, the task stacks; see below). Since the OS entry calls
+   it first, nothing else in the OS has run yet.
 2. The installer runs `0xC08490`, subtracts 1 KB from `0xFF166A` and re-runs
    `0xC084AC`. The heap, its header and the saved copies all shrink by 1 KB
    the ROM's own way, and the system block moves 1 KB down.
@@ -186,9 +186,38 @@ code (`tools/mkcodearea.py` builds it):
    OS entry with the ROM's registers. After that, OS RAM matches a stock boot
    except for the bounds (1 KB less) and the hook sites.
 
+**Where the staged bytes can go.** The zero run at `0xFFC994` is not free
+memory: it holds the task stacks. The OS's task table at `0xFFBEDC` gives
+(stack top, entry) per task: init `0xFFCA84`/`0xFF171E`, voice
+`0xFFCAFC`/`0xFFAC14`, `0xFFCB74`/`0xFF583A`, `0xFFCB94`/`0xFFB1D0`. The
+header at `0xFF0140` points the kernel at its other structures: task records
+from `0xFFCB94`, the message buffer pool `0xFFCBEC–0xFFCFF4`, the supervisor
+stack top `0xFFC960`. The boot ROM builds the task records and buffer pool
+before it jumps to the OS entry. The entry then runs as the init task with
+its user stack at `0xFFCA84`, and the other tasks start when it first yields.
+So at install time:
+
+| Range | Use while installing | Staged there |
+|---|---|---|
+| `0xFFC994–0xFFCA43` | bottom of the init stack (not reached) | install code |
+| `0xFFCA44–0xFFCA83` | init stack: OS entry `jsr`, our `movem`, ROM calls (40 of 64 bytes used) | nothing |
+| `0xFFCA84–0xFFCB93` | other tasks' stacks, not started yet | payload, hook table, group ranges |
+| `0xFFCB94` up | kernel task records, message buffers | must not touch |
+
+The first build staged everything from `0xFFC994` upward. It crashed in MAME:
+the init stack overwrote the payload before it was copied (illegal
+instruction at the code area), and an earlier variant zeroed the kernel's
+buffers (ERROR 137). The emulator now runs the install on the real stack
+with the kernel area filled in, so both mistakes fail the tests.
+
+The budget is tight: install code 168/176 bytes, payload + hooks + ranges
+252/272 (room for 5 more mute-group key ranges). Further features need a
+second stage that loads more code from disk (see ROADMAP).
+
 The emulator test (`tests/test_codearea.py`) checks this for all three memory
-configs and both boot ROMs. Not yet checked on hardware: that the 68000 runs
-code from sample RAM (first hardware test).
+configs and both boot ROMs. MAME boots the test disk to the main loop with
+the hook installed (`mame/run.sh`, docs/MAME.md). Not yet checked on
+hardware: that the 68000 runs code from sample RAM (first hardware test).
 
 ### Sampling (overlay 2)
 
@@ -441,6 +470,11 @@ and 12–15 go to `0xC073xx–0xC076xx`; traps 10/11 point back into the OS
 Current task control block pointer at `0x0134`; free message list at
 `0x0136`. A message has a type word at `+2` and data from `+4`. Task blocks
 seen as send targets: `0xFFCB94`, `0xFFCBAA`, `0xFFCBC0` (22 bytes apart).
+The OS file's header at `0xFF0140` configures the kernel. It holds the
+message pool bounds `0xFFCBEC`/`0xFFCFF4`, task records `0xFFCB94`, the
+supervisor stack `0xFFC960`, the stack area `0xFFC994`, and the task table
+`0xFFBEDC–0xFFBEEC`: four (stack top, entry) pairs, init being
+`0xFFCA84`/`0xFF171E`.
 
 * **Voice task** (loop `0xFFAC22`): receives a message, uses the type as an
   even offset into `0xFFAC3A`: 0 → note-on `0xFFAC4E`, 2 → `0xFFAE12`,
@@ -516,7 +550,14 @@ routines, not the machine. `python3 -m unittest discover tests` runs:
   patched note-on entry leaves every register as stock does. These caught two
   bugs: the kill's word-sized `movem` sign-extends d6, and `moveq` cleared
   d0's upper word.
+* `tests/test_codearea.py`: the boot-time install (all memory configs, both
+  boot ROMs) on the real init stack, with the kernel's data above the staging
+  bytes, and the mute hook through the installed jsr.
 * `tests/test_swing.py`: the reference swing math in `tools/swing.py`.
+
+MAME (`mame/`, docs/MAME.md) runs the whole machine: the boot ROM loads the
+OS from a disk image, and the OS boots to its main loop. That caught the
+staging/stack bug the routine tests missed.
 
 ## Reproducing
 

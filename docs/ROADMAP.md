@@ -198,7 +198,7 @@ instead of building wavesample records ourselves, then set the fields. Needs
 the wavesample/layer parameter layout decoded (the same work also gives
 full level and one-shot their per-instrument settings).
 
-## Ideas for later (not scheduled, not being implemented)## Ideas for later (not scheduled, not being implemented)
+## Ideas for later (not scheduled, not being implemented)
 
 ### S900 FILTER (render command)
 
@@ -270,12 +270,22 @@ Resident RAM (`0xFF1600–0xFFDFFF`) is full. Our resident code now lives in
 the **top 1 KB of sample RAM**, reserved at boot (ANALYSIS.md → Code area;
 `src/codearea.s`, `tools/mkcodearea.py`). The payload is position
 independent; the installer writes the hook jumps for whichever expander is
-fitted. Cost: 1 KB of sample memory. Mute groups use 556 bytes of it (most of that is the per-key table).
+fitted. Cost: 1 KB of sample memory. Mute groups use 572 bytes of it
+(352 of them the per-key table, built at boot).
 
 | Status | |
 |---|---|
 | Emulator | passes for base / 2x / 4x and boot ROM 2.00 / 2.40; OS RAM after boot matches stock except the bounds and hook sites |
+| MAME | test disk boots to the main loop with the hook installed (docs/MAME.md) |
 | Hardware | **test 1 pending**: does the 68000 run code from sample RAM? (docs/HARDWARE_TESTS.md) |
+
+**Next blocker: staging space.** The code is staged in the task stacks
+(ANALYSIS.md → Code area). After the MAME fix only 176 + 272 bytes there are
+usable, and mute groups fill most of it. Before swing and loop recording,
+the installer needs a **second stage**: a small loader that reads more code
+from spare disk blocks into the code area (through the boot ROM's block
+read, which is already set up at that point), with the code area grown to a
+few KB. The OS disk has room: overlay 3's 16 blocks are empty.
 
 Other options measured earlier, kept for reference:
 
@@ -314,7 +324,8 @@ expanded unit.
 | M0 | Installer unpacked, EDE ⇄ IMG, OS extract/replace, patch tool, disassembly | **done** |
 | M1 | Memory layout: resident part, overlays, stack, voice engine | **done** (see ANALYSIS.md) |
 | M2 | MIDI-out debug patch on hardware: dump sample bounds and memory size from an expanded EPS | next |
-| M2b | Code location for resident hooks | code area in sample RAM; emulator-tested, hardware test 1 |
+| M2b | Code location for resident hooks | code area in sample RAM; emulator- and MAME-tested, hardware test 1 |
+| M2c | Second-stage loader (code from disk blocks, bigger code area) | next: needed before swing / loop recording |
 | M3 | Mute groups v1 (groups set at build time) on hardware | test disk ready (hardware test 1) |
 | M4 | Display/parameter system decoded; mute group editable from the panel | messages + commands decoded from the boot ROM |
 | M5 | Filter probe on hardware → filter OUT | try stock 20.0 KHZ first; 16 probe disks ready |
@@ -323,10 +334,15 @@ expanded unit.
 
 ## Testing
 
-There is no working emulator (MAME's EPS driver doesn't boot), so each step
-needs a hardware test. The fastest loop is a Gotek with FlashFloppy:
-`epstool.py replace stock.ede 0 patched.bin test.img`, copy it to USB, and
-power-cycle. A bad OS just fails to boot; the stock disk always recovers.
+Three levels:
+1. **Unicorn** (`tests/`): routines against real OS and ROM code, in
+   milliseconds.
+2. **MAME** (`mame/`, docs/MAME.md): the whole machine boots our disk images.
+   Stock MAME's EPS driver doesn't boot; `mame/eps.patch` fixes the floppy
+   wiring, supervisor writes and the panel handshake. Use it before every
+   hardware test.
+3. **Hardware**: a Gotek with the `.hfe` (docs/HARDWARE_TESTS.md). A bad OS
+   just fails to boot; the stock disk always recovers.
 
 Before hardware, `python3 -m unittest discover tests` runs our code against
 real OS routines in a 68000 emulator (`tools/emu.py`, ANALYSIS.md → Emulator

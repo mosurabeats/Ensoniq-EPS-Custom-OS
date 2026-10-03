@@ -24,6 +24,11 @@ python3 tools/mkcodearea.py build/eps_os_249.bin -o build/test/codearea_mute.jso
 
 ## Test 1: code area + mute groups (`EPS249_MUTETEST`)
 
+> **Use a disk built on or after the MAME fix.** The first test disks staged
+> the code where the OS keeps its task stacks, and they crash at boot
+> ("ERROR 137" or "ERROR 131 - REBOOT ?"). The current build boots to the
+> main loop in MAME with the hook installed (`mame/run.sh`, docs/MAME.md).
+
 **What it checks:** that the EPS can run our code from the top 1 KB of
 sample RAM (the code area), and that mute groups work there.
 

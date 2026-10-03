@@ -1,0 +1,105 @@
+diff --git a/src/mame/ensoniq/esq5505.cpp b/src/mame/ensoniq/esq5505.cpp
+index ff89250e..149835a7 100644
+--- a/src/mame/ensoniq/esq5505.cpp
++++ b/src/mame/ensoniq/esq5505.cpp
+@@ -389,7 +389,10 @@ TIMER_CALLBACK_MEMBER(esq5505_state::floppy_dskchg_reset)
+ {
+ 	m_floppy_dskchg = !m_floppy_is_loaded;
+ 	LOG("Resetting floppy_dskchg -> %s\n", m_floppy_dskchg ? "true" : "false");
+-	update_docirq_to_maincpu();
++	if (m_system_type == EPS)
++		update_floppy_inputs();
++	else
++		update_docirq_to_maincpu();
+ }
+ 
+ void esq5505_state::update_floppy_inputs()
+@@ -397,6 +400,15 @@ void esq5505_state::update_floppy_inputs()
+ 	// update the "Disk Ready" input
+ 	m_duart->ip0_w(m_floppy_is_active && m_floppy_is_loaded);
+ 
++	// EPS: disk change is DUART IP1 (DSKCH), not an interrupt
++	if (m_system_type == EPS)
++	{
++		m_duart->ip1_w(m_floppy_is_active && m_floppy_dskchg);
++		if (m_floppy_is_active && m_floppy_dskchg && m_floppy_is_loaded)
++			m_dskchg_reset_timer->adjust(attotime::from_msec(1));
++		return;
++	}
++
+ 	// Also update the DOC IRQ in case there's a pending disk change to handle.
+ 	update_docirq_to_maincpu();
+ }
+@@ -434,7 +446,7 @@ void esq5505_state::floppy_unload(floppy_image_device *floppy)
+ 
+ void esq5505_state::update_docirq_to_maincpu()
+ {
+-	bool floppy_dskchg_irq = m_floppy_is_active && m_floppy_dskchg;
++	bool floppy_dskchg_irq = m_floppy_is_active && m_floppy_dskchg && m_system_type != EPS;
+ 	if (floppy_dskchg_irq)
+ 		LOG("docirq (m68k_irq1) due to disk change = %d\n", floppy_dskchg_irq);
+ 	if (floppy_dskchg_irq && m_floppy_is_loaded)
+@@ -569,7 +581,11 @@ void esq5505_state::lower_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+ 
+ 	if (offset < 0x4000)
+ 	{
+-		if (m_maincpu->get_fc() != 0x6)  // if not supervisor mode, RAM
++		// EPS: the boot ROM reads the OS from floppy in supervisor mode with
++		// "move.b fdc_data,(a0)+" into 0x0000-0x7fff (ROM 0xC0C046 loads
++		// blocks to 0x0000, 0x1600, 0x2200), so supervisor writes must reach
++		// RAM; only supervisor *reads* see the ROM.
++		if (m_maincpu->get_fc() != 0x6 || m_system_type == EPS)
+ 			COMBINE_DATA(&m_ram[offset]);
+ 		else
+ 			LOG("Write to ROM: %x @ %x (fc=%x)\n", data, offset, m_maincpu->get_fc());
+@@ -687,7 +703,19 @@ void esq5505_state::duart_output(uint8_t data)
+ 	{
+ 		if (m_system_type == EPS)
+ 		{
+-			floppy->ss_w((data & 2)>>1);
++			// EPS main board (schematics 4010007501/4010010002): OP0 = DSEL,
++			// OP1 = SSEL, IP0 = DSTAT, IP1 = DSKCH. The boot ROM selects the
++			// drive by clearing OPR bit 0 (pin high, 0xC0A5E0) and reads
++			// IP1 = 1 as "disk changed" (0xC0F8B4). data = pin levels.
++			floppy->ss_w(BIT(data, 1));
++			bool active = BIT(data, 0);
++			if (active != m_floppy_is_active)
++			{
++				m_floppy_is_active = active;
++				floppy->ds_w(active ? CLEAR_LINE : ASSERT_LINE);
++				m_motor_on_timer->adjust(attotime::from_usec(active ? 100 : 50), active ? 1 : 0);
++			}
++			update_floppy_inputs();
+ 		}
+ 		else
+ 		{
+diff --git a/src/mame/ensoniq/esqpanel.cpp b/src/mame/ensoniq/esqpanel.cpp
+index 6db66602..95f5ffb9 100644
+--- a/src/mame/ensoniq/esqpanel.cpp
++++ b/src/mame/ensoniq/esqpanel.cpp
+@@ -509,6 +509,25 @@ void esqpanel_device::rcv_complete()    // Rx completed receiving byte
+ 
+ 	m_external_panel_server->send_to_all(data);
+ 
++	// EPS custom OS project: log every byte the OS sends to the panel
++	// (display text, lights) when ESQPANEL_LOG is set, for offline decoding.
++	static const bool s_log_panel = getenv("ESQPANEL_LOG") != nullptr;
++	if (s_log_panel)
++		fprintf(stderr, "PANEL %.6f %02x\n", machine().time().as_double(), data);
++
++	// EPS: the keyboard/panel controller (KPC) acknowledges every byte it
++	// receives with 0xFF. OS 2.49 sends the next queued byte only after that
++	// ack (DUART B receive handler 0xFF97C4: FF = send next, FC xx = data
++	// byte, F7 = end; bytes < C0 are key events, so the old 0x00 reply was a
++	// phantom key and stalled the OS at its first button-light update).
++	// The boot ROM ignores the replies.
++	if (m_eps_mode)
++	{
++		xmit_char(0xff);
++		send_to_display(data);
++		return;
++	}
++
+ 	if (m_expect_calibration_second_byte)
+ 	{
+ 		skip_display = true;

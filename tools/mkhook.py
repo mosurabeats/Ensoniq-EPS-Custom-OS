@@ -26,11 +26,13 @@ def run(*cmd):
     subprocess.run(cmd, check=True)
 
 
-def assemble(src, org, entry):
-    """Assemble src linked at org. Returns (code bytearray, {symbol: address})."""
+def assemble(src, org, entry, defsyms=None):
+    """Assemble src linked at org. Returns (code bytearray, {symbol: address}).
+    defsyms: {name: int} passed to the assembler as --defsym."""
     with tempfile.TemporaryDirectory() as t:
         obj, elf, binf = (os.path.join(t, n) for n in ("h.o", "h.elf", "h.bin"))
-        run("m68k-linux-gnu-as", "-m68000", "--register-prefix-optional",
+        defs = [f"--defsym={k}={v}" for k, v in (defsyms or {}).items()]
+        run("m68k-linux-gnu-as", "-m68000", "--register-prefix-optional", *defs,
             "-I", os.path.dirname(os.path.abspath(src)), "-o", obj, src)
         run("m68k-linux-gnu-ld", "-e", entry, f"-Ttext={org:#x}", "-o", elf, obj)
         run("m68k-linux-gnu-objcopy", "-O", "binary", elf, binf)

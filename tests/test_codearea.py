@@ -24,13 +24,28 @@ ACTIVE, RELEASE = 0xFF16E4, 0xFF16DC
 VOICES, VSIZE = 0xFF0940, 154
 BOUNDS = (0xFF165A, 0xFF165E, 0xFF1662, 0xFF166A, 0xFF166E, 0xFF1672, 0xFF1676)
 PHYS_TOP = {"base": 0x600000, "2x": 0x680000, "4x": 0x800000}
+ENTRY_SP = mkcodearea.INIT_STACK   # user stack at the OS entry (task table; MAME)
+RESERVE = 0xEE                # fill for the stack reserve, to see how deep it goes
+KERNEL = (mkcodearea.STAGE_LIMIT, 0xFFCFF0)   # task records and message buffers the
+                                              # boot ROM builds before the OS entry
+
+
+def kernel_pattern():
+    n = KERNEL[1] - KERNEL[0]
+    return bytes((i * 37 + 11) & 0xFF or 1 for i in range(n))
 
 
 def boot(expander, patch=None, rom=ROM):
     eps = EPS(rom, OS, expander=expander)
     if patch:
         eps.apply_patch(patch)
-    eps.call(TRAMPOLINE)          # what the OS entry (0xFF171E) does first
+    # what MAME shows at the OS entry: kernel data above the staging bytes,
+    # and garbage in sample RAM
+    eps.write(KERNEL[0], kernel_pattern())
+    eps.write(mkcodearea.STACK_LO, bytes([RESERVE]) * (ENTRY_SP - mkcodearea.STACK_LO))
+    top = PHYS_TOP[expander]
+    eps.write(top - 2048, bytes((i * 13 + 5) & 0xFF for i in range(2048)))
+    eps.call(TRAMPOLINE, sp=ENTRY_SP)     # what the OS entry (0xFF171E) does first
     return eps
 
 
@@ -39,7 +54,8 @@ class CodeAreaTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.os_bin = open(OS, "rb").read()
-        cls.patch, cls.info = mkcodearea.build(cls.os_bin, "1:C2=1,1:D2=1,2=1,5=2")
+        cls.groups = mkcodearea.parse_groups("1:C2=1,1:D2=1,2=1,5=2,8:C8=15")
+        cls.patch, cls.info = mkcodearea.build(cls.os_bin, cls.groups)
         cls.code = bytes.fromhex(cls.patch["edits"][0]["data"])
         cls.off = cls.info["payload_offsets"]
 
@@ -58,8 +74,14 @@ class CodeAreaTest(unittest.TestCase):
                 area = self.area(exp)
                 self.assertEqual(ours.rl(0xFF165A) + 512, area)
                 n = self.info["payload_bytes"]
-                payload = self.code[len(self.code) - n:]
+                p = self.info["payload"] - mkcodearea.STAGE
+                payload = self.code[p:p + n]
                 self.assertEqual(ours.read(area, n), payload)
+                # the group table, built from the ranges over garbage
+                self.assertEqual(ours.read(area + n, mkcodearea.MUTE_TABLE_SIZE),
+                                 mkcodearea.group_table(self.groups))
+                # kernel data above the staging bytes untouched
+                self.assertEqual(ours.read(KERNEL[0], KERNEL[1] - KERNEL[0]), kernel_pattern())
                 # hook site now calls mute_hook in the area
                 jsr = bytes.fromhex("4eb9") + (area + self.off["mute_hook"]).to_bytes(4, "big")
                 self.assertEqual(ours.read(HOOK_SITE, 8), jsr + bytes.fromhex("4e71"))
@@ -75,13 +97,45 @@ class CodeAreaTest(unittest.TestCase):
                 allowed = set(range(HOOK_SITE, HOOK_SITE + 8))
                 for v in BOUNDS:
                     allowed |= set(range(v, v + 4))
-                allowed |= set(range(0xFFDE00, 0xFFE000))      # stack scratch (OS stack 0xFFDF80-0xFFDFFF)
+                allowed |= set(range(mkcodearea.STACK_LO, ENTRY_SP))   # stack reserve
                 diff = [0xFF0000 + i for i in range(0x10000) if a[i] != b[i]]
                 extra = [hex(x) for x in diff if x not in allowed]
                 self.assertEqual(extra, [], "staging not cleared or other RAM changed")
                 # heap header at the start of sample RAM matches the smaller heap
                 s = ours.rl(0xFF1656)
                 self.assertNotEqual(ours.rl(s), stock.rl(s))
+
+    def test_staging_fits_below_kernel_data(self):
+        self.assertLessEqual(mkcodearea.STAGE + self.info["stage_bytes"], mkcodearea.STAGE_LIMIT)
+        self.assertLessEqual(self.info["install_end"], mkcodearea.STACK_LO)
+
+    def test_stack_stays_in_the_reserve(self):
+        """The init stack (0xFFCA84 down) must not reach the install code."""
+        for exp in ("base", "4x"):
+            with self.subTest(exp):
+                eps = boot(exp, self.patch)
+                n = ENTRY_SP - mkcodearea.STACK_LO
+                used = n - next(i for i, b in enumerate(eps.read(mkcodearea.STACK_LO, n))
+                                if b != RESERVE)
+                self.assertLessEqual(used + 8, n, f"stack used {used} of {n} bytes")
+        # one range per key in every instrument is far too many
+        many = {(i, k): 1 + (k % 2) for i in range(8) for k in range(21, 109)}
+        with self.assertRaises(ValueError):
+            mkcodearea.build(self.os_bin, many)
+
+    def test_ranges_build_the_table(self):
+        import random
+        rnd = random.Random(1)
+        for _ in range(50):
+            g = {(rnd.randrange(8), rnd.randrange(21, 109)): rnd.randrange(16) for _ in range(12)}
+            g.update({(1, k): 3 for k in range(21, 109)})
+            r = mkcodearea.group_ranges(g)
+            t = bytearray(mkcodearea.MUTE_TABLE_SIZE)
+            for j in range(0, len(r) - 2, 4):
+                idx, n, grp = int.from_bytes(r[j:j + 2], "big"), r[j + 2] + 1, r[j + 3]
+                for i in range(idx, idx + n):
+                    t[i // 2] |= grp << 4 if i % 2 == 0 else grp
+            self.assertEqual(bytes(t), mkcodearea.group_table(g))
 
     def test_boot_rom_240(self):
         if not os.path.exists(ROM240):
