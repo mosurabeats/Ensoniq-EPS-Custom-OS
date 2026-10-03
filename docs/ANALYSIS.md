@@ -557,7 +557,23 @@ routines, not the machine. `python3 -m unittest discover tests` runs:
 
 MAME (`mame/`, docs/MAME.md) runs the whole machine: the boot ROM loads the
 OS from a disk image, and the OS boots to its main loop. That caught the
-staging/stack bug the routine tests missed.
+staging/stack bug the routine tests missed. With panel and key input
+scripted, it also loads instruments from disk and plays them, and
+`mame/test_mutegroups.py` checks mute groups on the voice lists.
+
+### Panel protocol and disk DMA (found while getting MAME to work)
+
+* **Panel → CPU** (DUART B, handler `0xFF97A6`, state in `0xFF164E`): a
+  byte below `0xC0` with bit 7 set starts a press, without it a release;
+  bits 0–5 are the code. A second byte of 0 means a panel button (code →
+  button through ROM table `0xC02032`), non-zero means a keyboard key with
+  that velocity, note = code + 36. `0xFF` = ack for the last byte sent,
+  `0xFC xx` = data byte, `0xF7` = end. Button codes: docs/MAME.md.
+* **Disk after boot**: the OS uses the ROM's block routines through hooks
+  at `0xFF8178–0xFF818B`. They program DMAC channel 0 (`0x240000`,
+  HD63450/MC68450 layout) for FDC transfers, with FDC DRQ on REQ0 and FDC
+  INTRQ on PCL0; the DMAC interrupts at level 2, vectors 65/66 → `0xFF8188`.
+  Vectors 67/68 (`0xC0EAD2`) are presumably channel 1, the sampling ADC.
 
 ## Reproducing
 

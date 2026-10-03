@@ -4,6 +4,7 @@
 #
 #   tools/fetch.sh          OS 2.49 + older OS versions + schematics/manuals
 #   tools/fetch.sh os       OS images only
+#   tools/fetch.sh sounds   a drum disk for the MAME tests (build/sounds)
 #
 # Sources (see docs/RESOURCES.md):
 #   HxC2001 QuickInstall_FloppyDiskImages.zip -> SDHxCFE_Ensoniq_EPS.zip
@@ -44,6 +45,13 @@ for v in 2_2 245 100 110 119 130; do
 done
 
 [ "$1" = os ] && exit 0
+
+# ---- Sounds for the MAME tests (archive.org "EPS-Percussion": EPS factory
+# drum disks as Gotek .gkh). DRMSET09: TR 8O8 and LIVE KIT.
+mkdir -p build/sounds
+get "https://archive.org/download/EPS-Percussion/DrumSets/DRMSET09.GKH" build/sounds/DRMSET09.GKH
+$EPSTOOL ls build/sounds/DRMSET09.GKH
+[ "$1" = sounds ] && exit 0
 
 # ---- Reference documents (archive.org)
 IA=https://archive.org/download

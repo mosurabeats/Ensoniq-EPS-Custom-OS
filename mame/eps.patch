@@ -1,5 +1,5 @@
 diff --git a/src/mame/ensoniq/esq5505.cpp b/src/mame/ensoniq/esq5505.cpp
-index ff89250e..149835a7 100644
+index ff89250e..ae31741b 100644
 --- a/src/mame/ensoniq/esq5505.cpp
 +++ b/src/mame/ensoniq/esq5505.cpp
 @@ -389,7 +389,10 @@ TIMER_CALLBACK_MEMBER(esq5505_state::floppy_dskchg_reset)
@@ -52,7 +52,7 @@ index ff89250e..149835a7 100644
  			COMBINE_DATA(&m_ram[offset]);
  		else
  			LOG("Write to ROM: %x @ %x (fc=%x)\n", data, offset, m_maincpu->get_fc());
-@@ -687,7 +703,19 @@ void esq5505_state::duart_output(uint8_t data)
+@@ -687,7 +703,22 @@ void esq5505_state::duart_output(uint8_t data)
  	{
  		if (m_system_type == EPS)
  		{
@@ -61,6 +61,9 @@ index ff89250e..149835a7 100644
 +			// OP1 = SSEL, IP0 = DSTAT, IP1 = DSKCH. The boot ROM selects the
 +			// drive by clearing OPR bit 0 (pin high, 0xC0A5E0) and reads
 +			// IP1 = 1 as "disk changed" (0xC0F8B4). data = pin levels.
++			static const bool s_fdlog = getenv("ESQ_FDLOG") != nullptr;
++			if (s_fdlog)
++				fprintf(stderr, "FD %.6f duart out %02x\n", machine().time().as_double(), data);
 +			floppy->ss_w(BIT(data, 1));
 +			bool active = BIT(data, 0);
 +			if (active != m_floppy_is_active)
@@ -73,11 +76,85 @@ index ff89250e..149835a7 100644
  		}
  		else
  		{
+@@ -850,6 +881,15 @@ void esq5505_state::eps(machine_config &config)
+ 	m_dmac->irq_callback().set_inputline(m_maincpu, M68K_IRQ_2);
+ 	m_dmac->dma8_read<0>().set(m_fdc, FUNC(wd1772_device::data_r));  // ch 0 = fdc, ch 1 = 340001 (ADC?)
+ 	m_dmac->dma8_write<0>().set(m_fdc, FUNC(wd1772_device::data_w));
++
++	// EPS: the OS reads and writes disk blocks by DMA (after boot; the boot
++	// ROM's loader polls). OS 2.49 programs channel 0 with OCR request mode
++	// "external REQ" and DCR PCL mode "status input with interrupt"
++	// (0xFFDBC2), and resumes the transfer in the DMAC's vector 65/66
++	// handler (0xFFDC2A), which reads the FDC status. So FDC DRQ -> REQ0 and
++	// FDC INTRQ -> PCL0 (active low).
++	m_fdc->drq_wr_callback().set(m_dmac, FUNC(hd63450_device::drq0_w));
++	m_fdc->intrq_wr_callback().set([this] (int state) { m_dmac->pcl0_w(!state); });
+ }
+ 
+ void esq5505_state::vfxsd(machine_config &config)
 diff --git a/src/mame/ensoniq/esqpanel.cpp b/src/mame/ensoniq/esqpanel.cpp
-index 6db66602..95f5ffb9 100644
+index 6db66602..9454cb61 100644
 --- a/src/mame/ensoniq/esqpanel.cpp
 +++ b/src/mame/ensoniq/esqpanel.cpp
-@@ -509,6 +509,25 @@ void esqpanel_device::rcv_complete()    // Rx completed receiving byte
+@@ -452,6 +452,47 @@ void esqpanel_device::device_start()
+ 		m_external_timer = timer_alloc(FUNC(esqpanel_device::check_external_panel_server), this);
+ 		m_external_timer->enable(false);
+ 	}
++
++	// EPS custom OS project: ESQPANEL_KEYS names a file of lines
++	// "SECONDS HEX [HEX...]": at that emulated time the panel sends those
++	// bytes to the CPU, as if keys or buttons were pressed. '#' starts a comment.
++	m_script_timer = timer_alloc(FUNC(esqpanel_device::send_scripted_keys), this);
++	if (const char *path = getenv("ESQPANEL_KEYS"))
++	{
++		FILE *f = fopen(path, "r");
++		char line[256];
++		while (f && fgets(line, sizeof(line), f))
++		{
++			if (char *hash = strchr(line, '#'))
++				*hash = 0;
++			std::istringstream in(line);
++			double t;
++			if (!(in >> t))
++				continue;
++			std::vector<uint8_t> bytes;
++			std::string tok;
++			while (in >> tok)
++				bytes.push_back(uint8_t(std::stoul(tok, nullptr, 16)));
++			m_script.emplace_back(t, bytes);
++		}
++		if (f)
++			fclose(f);
++		std::stable_sort(m_script.begin(), m_script.end(),
++				[] (const auto &a, const auto &b) { return a.first < b.first; });
++	}
++}
++
++TIMER_CALLBACK_MEMBER(esqpanel_device::send_scripted_keys)
++{
++	const double now = machine().time().as_double();
++	while (m_script_pos < m_script.size() && m_script[m_script_pos].first <= now + 1e-9)
++	{
++		for (uint8_t b : m_script[m_script_pos].second)
++			xmit_char(b);
++		m_script_pos++;
++	}
++	if (m_script_pos < m_script.size())
++		m_script_timer->adjust(attotime::from_double(m_script[m_script_pos].first - now));
+ }
+ 
+ 
+@@ -470,6 +511,9 @@ void esqpanel_device::device_reset()
+ 
+ 	m_tx_busy = false;
+ 	m_xmit_read = m_xmit_write = 0;
++	m_script_pos = 0;
++	if (!m_script.empty())
++		m_script_timer->adjust(attotime::from_double(std::max(0.0, m_script[0].first - machine().time().as_double())));
+ 	m_expect_calibration_second_byte = false;
+ 	m_expect_light_second_byte = false;
+ 
+@@ -509,6 +553,25 @@ void esqpanel_device::rcv_complete()    // Rx completed receiving byte
  
  	m_external_panel_server->send_to_all(data);
  
@@ -103,3 +180,29 @@ index 6db66602..95f5ffb9 100644
  	if (m_expect_calibration_second_byte)
  	{
  		skip_display = true;
+diff --git a/src/mame/ensoniq/esqpanel.h b/src/mame/ensoniq/esqpanel.h
+index d61903f2..1b56f64d 100644
+--- a/src/mame/ensoniq/esqpanel.h
++++ b/src/mame/ensoniq/esqpanel.h
+@@ -69,7 +69,7 @@ protected:
+ 	esqpanel::external_panel_server *m_external_panel_server;
+ 
+ private:
+-	static const int XMIT_RING_SIZE = 16;
++	static const int XMIT_RING_SIZE = 64;
+ 
+ 	bool m_expect_calibration_second_byte = false;
+ 	bool m_expect_light_second_byte = false;
+@@ -81,6 +81,12 @@ private:
+ 	bool m_tx_busy = false;
+ 
+ 	emu_timer *m_external_timer = nullptr;
++
++	// EPS custom OS project: scripted panel bytes (ESQPANEL_KEYS=file)
++	TIMER_CALLBACK_MEMBER(send_scripted_keys);
++	std::vector<std::pair<double, std::vector<uint8_t>>> m_script;
++	size_t m_script_pos = 0;
++	emu_timer *m_script_timer = nullptr;
+ };
+ 
+ class esqpanel1x22_device : public esqpanel_device {

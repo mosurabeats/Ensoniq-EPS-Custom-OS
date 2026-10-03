@@ -276,7 +276,7 @@ fitted. Cost: 1 KB of sample memory. Mute groups use 572 bytes of it
 | Status | |
 |---|---|
 | Emulator | passes for base / 2x / 4x and boot ROM 2.00 / 2.40; OS RAM after boot matches stock except the bounds and hook sites |
-| MAME | test disk boots to the main loop with the hook installed (docs/MAME.md) |
+| MAME | test disk boots to the main loop with the hook installed; with the TR 8O8 kit loaded from the panel, mono and per-key groups cut voices as designed (`mame/test_mutegroups.py`) |
 | Hardware | **test 1 pending**: does the 68000 run code from sample RAM? (docs/HARDWARE_TESTS.md) |
 
 **Next blocker: staging space.** The code is staged in the task stacks
@@ -326,7 +326,7 @@ expanded unit.
 | M2 | MIDI-out debug patch on hardware: dump sample bounds and memory size from an expanded EPS | next |
 | M2b | Code location for resident hooks | code area in sample RAM; emulator- and MAME-tested, hardware test 1 |
 | M2c | Second-stage loader (code from disk blocks, bigger code area) | next: needed before swing / loop recording |
-| M3 | Mute groups v1 (groups set at build time) on hardware | test disk ready (hardware test 1) |
+| M3 | Mute groups v1 (groups set at build time) on hardware | passes in MAME with a real kit; test disk ready (hardware test 1) |
 | M4 | Display/parameter system decoded; mute group editable from the panel | messages + commands decoded from the boot ROM |
 | M5 | Filter probe on hardware → filter OUT | try stock 20.0 KHZ first; 16 probe disks ready |
 | M6 | MPC/SP-1200 swing in QUANTIZE TRACK | reference math done; quantize loop being decoded |

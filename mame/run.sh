@@ -8,13 +8,16 @@
 # SCRIPT defaults to mame/boot.lua (boot steps and code-area state).
 # Needs the boot ROM halves in build/bootrom/unknown/ (docs/RESOURCES.md)
 # and MAME built by mame/build.sh (or MAME=path/to/eps).
+# KEYS=file plays panel buttons and keys (format: mame/keys/*.txt).
+# RUN=dir picks the working directory (default build/mame/run).
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DISK=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 SECS=${2:-15}
 LUA=$(cd "$(dirname "${3:-$ROOT/mame/boot.lua}")" && pwd)/$(basename "${3:-boot.lua}")
 MAME=${MAME:-$ROOT/build/mame/src/eps}
-RUN=$ROOT/build/mame/run
+RUN=${RUN:-$ROOT/build/mame/run}
+[ -n "$KEYS" ] && KEYS=$(cd "$(dirname "$KEYS")" && pwd)/$(basename "$KEYS")
 
 mkdir -p "$RUN/roms/eps"
 for h in h l; do
@@ -22,7 +25,7 @@ for h in h l; do
 done
 cd "$RUN"
 rm -f debug.log
-ESQPANEL_LOG=1 "$MAME" eps -rompath roms -flop "$DISK" -video none -sound none \
+ESQPANEL_LOG=1 ESQPANEL_KEYS=$KEYS "$MAME" eps -rompath roms -flop "$DISK" -video none -sound none \
     -nothrottle -seconds_to_run "$SECS" -skip_gameinfo -debug -debugger none \
     -autoboot_script "$LUA" -debuglog >stdout.log 2>panel.log || true
 python3 "$ROOT/mame/screens.py" panel.log

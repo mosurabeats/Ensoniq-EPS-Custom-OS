@@ -63,7 +63,11 @@ Whole-machine tests run in a patched MAME (docs/MAME.md):
 ```sh
 mame/build.sh                                   # once: MAME's EPS driver + our fixes
 mame/run.sh build/test/EPS249_MUTETEST.img      # boot a disk, print the display
+tools/fetch.sh sounds && python3 mame/test_mutegroups.py   # mute groups with a real kit
 ```
+
+`tools/epstool.py add OS.img SOUNDS.gkh 1 OUT.img` copies an instrument onto
+a disk (reads `.img`, `.ede`, `.hfe` and Gotek `.gkh`).
 
 ## Code area and test disks
 

@@ -12,6 +12,8 @@ Subcommands
   extract  IMAGE INDEX OUT.bin       Extract directory entry INDEX to a file
   replace  IMAGE INDEX NEW.bin OUT   Replace file INDEX with NEW.bin (may grow
                                      into free blocks directly after it)
+  add      IMAGE SRC INDEX OUT       Copy file INDEX of disk SRC (e.g. an
+                                     instrument) onto IMAGE, write OUT
   patch    OS.bin PATCH.json OUT.bin Apply a verified byte patch to an OS file
   info     OS.bin                    Summarise an OS file
 
@@ -228,6 +230,8 @@ def load_image(path):
         return bytearray(ede_decode(data))
     if path.lower().endswith(".hfe"):
         return bytearray(hfe_decode(data))
+    if data[:5] == b"TDDFI" and len(data) > NBLOCKS * BLOCK:
+        data = data[-NBLOCKS * BLOCK:]          # Gotek .gkh: header + raw image
     if len(data) != NBLOCKS * BLOCK:
         sys.exit(f"{path}: expected {NBLOCKS * BLOCK} bytes, got {len(data)}")
     return bytearray(data)
@@ -333,6 +337,39 @@ def replace_file(img, index, data):
     img[2 * BLOCK:2 * BLOCK + 4] = fc.to_bytes(4, "big")
 
 
+def add_file(img, src_img, src_index):
+    """Copy file src_index of src_img into a free directory slot of img,
+    in the first run of free blocks big enough (contiguous), keeping the
+    source's directory entry fields. Returns the new entry's index."""
+    e = get_entry(src_img, src_index)
+    data = read_file(src_img, e)
+    need = e["blocks"]
+    raw = DIR_BLOCKS[0] * BLOCK
+    slot = next((i for i in range(39) if img[raw + i * DIR_ENTRY + 1] == 0), None)
+    if slot is None:
+        sys.exit("directory full")
+    start, run = None, 0
+    for b in range(NBLOCKS):
+        run = run + 1 if fat_get(img, b) == 0 else 0
+        if run == need:
+            start = b - need + 1
+            break
+    if start is None:
+        sys.exit(f"no {need} contiguous free blocks")
+    data = data + FILL[:need * BLOCK - len(data)]
+    for i in range(need):
+        b = start + i
+        img[b * BLOCK:(b + 1) * BLOCK] = data[i * BLOCK:(i + 1) * BLOCK]
+        fat_set(img, b, b + 1 if i < need - 1 else FAT_EOF)
+    o = raw + slot * DIR_ENTRY
+    img[o:o + DIR_ENTRY] = src_img[e["raw_off"]:e["raw_off"] + DIR_ENTRY]
+    img[o + 16:o + 18] = need.to_bytes(2, "big")
+    img[o + 18:o + 22] = start.to_bytes(4, "big")
+    fc = free_count(img) - need
+    img[2 * BLOCK:2 * BLOCK + 4] = fc.to_bytes(4, "big")
+    return slot
+
+
 # ------------------------------------------------------------------ patches
 
 def apply_patch(os_bin, patch):
@@ -375,6 +412,8 @@ def main():
     a.add_argument("dst")
     a = sp.add_parser("replace"); a.add_argument("image"); a.add_argument("index", type=int)
     a.add_argument("src"); a.add_argument("dst")
+    a = sp.add_parser("add"); a.add_argument("image"); a.add_argument("src")
+    a.add_argument("index", type=int); a.add_argument("dst")
     a = sp.add_parser("patch"); a.add_argument("os"); a.add_argument("patch")
     a.add_argument("dst")
     a = sp.add_parser("info"); a.add_argument("os")
@@ -403,6 +442,11 @@ def main():
         replace_file(img, args.index, open(args.src, "rb").read())
         tpl = open(args.image, "rb").read()   # .ede header / .hfe track layout
         save_image(img, args.dst, tpl)
+    elif args.cmd == "add":
+        img = load_image(args.image)
+        slot = add_file(img, load_image(args.src), args.index)
+        save_image(img, args.dst, open(args.image, "rb").read())
+        print(f"{args.dst}: added as entry {slot}, {free_count(img)} blocks free")
     elif args.cmd == "patch":
         patch = json.load(open(args.patch))
         out = apply_patch(open(args.os, "rb").read(), patch)

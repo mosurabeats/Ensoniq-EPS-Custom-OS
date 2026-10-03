@@ -28,6 +28,11 @@ python3 tools/mkcodearea.py build/eps_os_249.bin -o build/test/codearea_mute.jso
 > the code where the OS keeps its task stacks, and they crash at boot
 > ("ERROR 137" or "ERROR 131 - REBOOT ?"). The current build boots to the
 > main loop in MAME with the hook installed (`mame/run.sh`, docs/MAME.md).
+>
+> In MAME the mute groups already work with a real instrument: the TR 8O8
+> kit loaded from the panel, notes played on the keyboard, voices cut as
+> expected (`mame/test_mutegroups.py`). What MAME can't tell us is whether
+> the real 68000 board runs code from sample RAM, and how it sounds.
 
 **What it checks:** that the EPS can run our code from the top 1 KB of
 sample RAM (the code area), and that mute groups work there.
