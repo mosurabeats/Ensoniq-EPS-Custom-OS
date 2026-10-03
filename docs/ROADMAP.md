@@ -161,7 +161,7 @@ instruments with per-key wavesamples.
 | # | Feature | Why | Size / where |
 |---|---|---|---|
 | 1 | Mute groups | hats, mono chops | done in emulator; hardware test 1 |
-| 2 | MPC-style loop recording: record-time timing correct + MPC60/3000/SP-1200 swing, **per-track swing**, no KEEP prompt, **undo last pass** | the core feel | no KEEP prompt **done** (`--auto-keep`, MAME-tested); swing and undo next |
+| 2 | MPC-style loop recording: record-time timing correct + MPC60/3000/SP-1200 swing, **per-track swing**, no KEEP prompt, **undo last pass** | the core feel | no KEEP prompt **done**; swing quantize per instrument **done** (`--swing`, set at build time; MAME-tested); undo next; then a panel page for the swing settings |
 | 3 | **Full level** per instrument (fixed velocity 127, like the MPC) | today: edit levels/envelopes by hand | tiny hook in note-on |
 | 4 | **One-shot** per instrument (key-up ignored, sample plays through) | today: edit release/sustain by hand | small hook in note-off |
 | 5 | **CHOP** (below) | chopping by hand is tedious | overlay 3 (new command) |

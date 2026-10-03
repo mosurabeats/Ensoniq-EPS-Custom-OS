@@ -534,11 +534,42 @@ supervisor stack `0xFFC960`, the stack area `0xFFC994`, and the task table
   (button 6) → 1 in `0xFF815E`, then goes on at `0xFF2652`.
   `mkcodearea.py --auto-keep` replaces it with "store 1, go on"
   (`mame/test_loop_record.py`: no prompt, the new notes play back).
-* Plan for record-time swing (ROADMAP #2): re-quantize at each loop wrap,
-  after the OS's merge, with the swing grid. Notes already on the grid
-  don't move, so it's equivalent to quantizing as you play. Undo of the
-  last pass: the buffer from before the last wrap. Next: the wrap handler
-  for state `0x5942` and the sequencer memory layout.
+* **LOOPED internals** (sequencer memory base `0xFF8104`):
+  * Two take buffers at offsets `0xFF8114` / `0xFF8118`, `0xFF8128` bytes
+    each, with a 28-byte header (the take's length is stored at +0 by
+    `0xFF6B2E`). `0xFF811C` = write pointer, `0xFF812C` = room left.
+  * During a pass the sequencer plays one buffer and writes the other: the
+    played events (copied as playback reaches them) plus what you play.
+    Every take starts with `0x8BB0` (start), a 1-tick time event, the
+    controller states (`0xB1`, `0xB8`, `0xBD`) at tick 1, and ends with the
+    END event `0x8BC0` at the loop length.
+  * Loop wrap `0xFF6726` (LOOPED: `0xFF6742`): `0xFF6B12`, `0xFF6AD6`
+    (finish the take: gap to the end, END), `0xFF6B2E` (store the length,
+    swap: `0xFF811C` = the other buffer + 28), state `0x5942`, then playback
+    of the new take (`0xFF61EE`, `0xFF6276`, `0xFF632E` …).
+  * STOP: `0xFF6A0E` assembles the final take in buffer A (the unplayed
+    rest of the previous take moved next to the partial pass, memmove
+    `0xFF5EE4`); then the commit `0xFF6B78` (`0xFF74F2` closes held notes,
+    `0xFF7690` merges the take into the track if KEEP = NEW).
+  * Writing an event: `0xFF737A` stages it at `0xFF8144` (+8 = its words,
+    +21 = word count), `0xFF7428` checks room, `0xFF7388` flushes the
+    ticks since the last event (`0xFF804A`), `0xFF6E56` appends it (and
+    sets bit 15 of its first word). A note just played arrives with bit 15
+    clear; events copied from the previous take have it set.
+  * `0xFF8038` (long) = position in the loop in ticks = the take time.
+  * Held notes being recorded: list at `0xFF8134` (+0 next, +2 duration,
+    +6 = offset of the duration word, bit 0 = buffer B). Note-off writes
+    the duration there (`0xFF74C2`).
+* **Swing quantize of LOOPED takes** (ROADMAP #2, `--swing`): the append
+  hook logs each new note (offset, time, quantized time); at the wrap,
+  after `0xFF6AD6`, the logged notes are moved in place (`src/swing.s`
+  swing_logged; usually just two gaps change because the earlier notes sit
+  on the grid lines), keeping the held-note records right; a note that
+  quantizes onto the loop end wraps to the start. The full re-encode
+  (swing_full) is the fallback, and what STOP uses. Measured in MAME: a
+  pass adding 16 new 16ths costs 2.4 ms at the wrap (0.6 ms stock),
+  scaling with the notes added in that pass, not the take's size. Notes
+  land at the swung grid on the next pass, like an MPC.
 
 ### Unused and unfinished bits
 

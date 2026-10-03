@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Reference swing/quantize math (the 68000 code is tested against this).
 
-All times are EPS sequencer ticks: 96 per quarter note (PPQN), like the
-MPC60 and MPC3000. Grid sizes: 1/8 = 48, 1/16 = 24 (swing applies to these
-two only, as on the MPC and SP-1200).
+All times are EPS sequencer ticks: 48 per quarter note (PPQN). Measured
+from sequences recorded in MAME: the deltas of a 4/4 bar add up to 192.
+The QUANTIZE grid table (ROM 0xC03F32: 48, 32, 24, 16, 12, 8, 6, 4, 3, 2)
+is in the same ticks. Grid sizes: 1/8 = 24, 1/16 = 12 (swing applies to these two
+only, as on the MPC and SP-1200).
 
 Swing moves every second grid step (the even 8ths/16ths: 2, 4, 6 ... of the
 beat counted from 1) later. "Swing %" is the share of the pair that the first
@@ -11,22 +13,23 @@ step gets: 50% = straight, 66.7% = triplet feel.
 
 Styles
   mpc     MPC60 / MPC3000 (Roger Linn): 50-75 in 1% steps. The offset is
-          round(pair * pct / 100) - grid, so at 96 PPQN some neighbouring
-          percentages share a tick (1% of a 16th pair is 0.48 tick).
-          ASSUMPTION: round half up. Truncating instead would give e.g.
-          54% -> +1 tick instead of +2. Check against a real MPC if possible.
+          round(pair * pct / 100) - grid. The MPCs run at 96 PPQN; the EPS
+          stores 48, so a 16th pair is 24 ticks and 1% is 0.24 tick: the
+          percentages land on whole ticks (54% -> +1, 58% -> +2, 66% -> +4,
+          75% -> +6). ASSUMPTION: round half up.
   sp1200  E-mu SP-1200: six settings shown as 50, 54, 58, 63, 67, 71%. These
-          are exactly (12+k)/24 of the pair (k = 0..5): one-tick steps at the
-          SP-1200's 48 PPQN, two ticks at 96 PPQN for 1/16. No rounding.
+          are exactly (12+k)/24 of the pair (k = 0..5): one-tick steps at
+          48 PPQN, the SP-1200's own resolution, so the EPS gets them exactly.
 
-    >>> offset("mpc", 54, 24), offset("mpc", 66, 24), offset("sp1200", 3, 24)
-    (2, 8, 6)
+    >>> offset("mpc", 54, 12), offset("mpc", 66, 12), offset("sp1200", 3, 12)
+    (1, 4, 3)
 """
 from fractions import Fraction
 
-PPQN = 96
-GRIDS = {"1/8": 48, "1/8T": 32, "1/16": 24, "1/16T": 16, "1/32": 12, "1/32T": 8}
-SWING_GRIDS = (48, 24)
+PPQN = 48
+GRIDS = {"1/4": 48, "1/4T": 32, "1/8": 24, "1/8T": 16, "1/16": 12, "1/16T": 8,
+         "1/32": 6, "1/32T": 4}
+SWING_GRIDS = (24, 12)
 
 SP1200_LABELS = (50, 54, 58, 63, 67, 71)
 
@@ -75,7 +78,7 @@ def quantize(t, grid, style="mpc", amount=50, strength=100):
 
 def table():
     rows = []
-    for name, g in (("1/16", 24), ("1/8", 48)):
+    for name, g in (("1/16", 12), ("1/8", 24)):
         for pct in range(50, 76):
             rows.append(("mpc", name, f"{pct}%", offset("mpc", pct, g)))
         for k, lab in enumerate(SP1200_LABELS):

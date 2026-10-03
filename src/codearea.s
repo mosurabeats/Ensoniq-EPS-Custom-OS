@@ -54,10 +54,24 @@ hooks:
         .long   0xFFACA4                | note-on for one instrument (D5)
         .word   mute_hook-image
         .byte   0x30,0x05,0xD0,0x40,0x32,0x7C,0xDF,0x70
+.if SWING
+        .long   0xFF6742                | LOOPED wrap: jsr 0x6B12; jsr 0x6AD6
+        .word   wrap_hook-image
+        .byte   0x4E,0xB8,0x6B,0x12,0x4E,0xB8,0x6A,0xD6
+        .long   0xFF6B7C                | commit: jsr 0x74F2; tst.b 0x815E
+        .word   stop_hook-image
+        .byte   0x4E,0xB8,0x74,0xF2,0x4A,0x38,0x81,0x5E
+        .long   0xFF6E56                | append: lea 8(a4),a0; ori.w #$8000,(a0)
+        .word   append_hook-image
+        .byte   0x41,0xEC,0x00,0x08,0x00,0x50,0x80,0x00
+.endif
         .long   0
 
         .include "mutegroup.s"
         .space  MUTE_TABLE_SIZE         | set at build time (--groups)
+.if SWING
+        .include "looprec.s"
+.endif
 
         .balign 2
         .globl  image_end

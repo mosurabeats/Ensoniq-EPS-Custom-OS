@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build the code-area patch: our resident code in the top of sample RAM.
 
-  mkcodearea.py OS.bin -o PATCH.json [--groups SPEC] [--auto-keep] [--area BYTES]
+  mkcodearea.py OS.bin -o PATCH.json [--groups SPEC] [--swing SPEC] [--auto-keep]
+                [--area BYTES]
                 [--disk STOCK.ede|STOCK.hfe OUT.img|OUT.ede|OUT.hfe]
 
 The patch has three edits to the OS file:
@@ -30,6 +31,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 import epstool  # noqa: E402
 import mkhook  # noqa: E402
+import swing  # noqa: E402
 
 SRCDIR = os.path.join(os.path.dirname(__file__), "..", "src")
 LOADER_SRC = os.path.join(SRCDIR, "loader.s")
@@ -103,14 +105,70 @@ def group_table(groups):
 
 MUTE_TABLE_SIZE = 8 * NKEYS // 2
 
+GRID_NAMES = {"4": 48, "4T": 32, "8": 24, "8T": 16, "16": 12, "16T": 8, "32": 6, "32T": 4}
 
-def build_image(groups):
-    """Stage 2 (src/codearea.s) at offset 0, mute table filled in and the
-    checksum set so all words sum to 0. Returns (bytes, symbols)."""
-    code, syms = mkhook.assemble(IMAGE_SRC, 0, "image")
+
+def parse_one_swing(text):
+    """'16:mpc:58' / '8:sp1200:63' (or setting 0-5) / 'off' -> (grid, style,
+    amount) or None."""
+    text = text.strip()
+    if text.lower() == "off":
+        return None
+    parts = text.split(":")
+    grid = GRID_NAMES.get(parts[0].upper().replace("1/", ""))
+    if grid is None:
+        raise ValueError(f"bad grid {parts[0]!r} (4, 4T, 8, 8T, 16, 16T, 32, 32T)")
+    style = parts[1].lower() if len(parts) > 1 else "mpc"
+    amount = int(parts[2]) if len(parts) > 2 else (50 if style == "mpc" else 0)
+    if style == "sp1200" and amount in swing.SP1200_LABELS:
+        amount = swing.SP1200_LABELS.index(amount)
+    swing.swing_fraction(style, amount)          # validates
+    return grid, style, amount
+
+
+def parse_swing(spec):
+    """--swing SPEC -> {instrument 0-7: (grid, style, amount)}.
+    'G:STYLE:AMOUNT' for every instrument, or 'I=G:STYLE:AMOUNT,...'."""
+    spec = (spec or "").strip()
+    if not spec:
+        return {}
+    if "=" not in spec:
+        one = parse_one_swing(spec)
+        return {i: one for i in range(8)} if one else {}
+    out = {}
+    for item in spec.split(","):
+        inst, setting = item.split("=", 1)
+        i = int(inst) - 1
+        if not 0 <= i < 8:
+            raise ValueError(f"instrument {inst} (1-8)")
+        one = parse_one_swing(setting)
+        if one:
+            out[i] = one
+        else:
+            out.pop(i, None)
+    return out
+
+
+def swing_table(settings):
+    """swing_settings in src/looprec.s: 8 x (grid.w, offset.w)."""
+    t = bytearray(32)
+    for i, (grid, style, amount) in settings.items():
+        t[4 * i:4 * i + 4] = grid.to_bytes(2, "big") + swing.offset(style, amount, grid).to_bytes(2, "big")
+    return bytes(t)
+
+
+def build_image(groups, swing_settings=None):
+    """Stage 2 (src/codearea.s) at offset 0, mute table (and swing table)
+    filled in and the checksum set so all words sum to 0.
+    Returns (bytes, symbols)."""
+    code, syms = mkhook.assemble(IMAGE_SRC, 0, "image", {"SWING": 1 if swing_settings else 0})
     table = group_table(groups)
     off = syms["mute_table"]
     code[off:off + len(table)] = table
+    if swing_settings:
+        st = swing_table(swing_settings)
+        off = syms["swing_settings"]
+        code[off:off + len(st)] = st
     if len(code) != syms["image_end"] or len(code) % 2:
         raise ValueError("image length mismatch")
     total = sum(int.from_bytes(code[i:i + 2], "big") for i in range(0, len(code), 2))
@@ -126,10 +184,12 @@ AUTO_KEEP = {"addr": "0xFF2702", "expect": "31fc0002c2ec0c380000",
              "data": "11fc0001815e" + "6000" + ((0xFF2652 - 0xFF270A) & 0xFFFF).to_bytes(2, "big").hex()}
 
 
-def build(os_bin, groups="", area_size=None, auto_keep=False):
+def build(os_bin, groups="", area_size=None, auto_keep=False, swing_settings=None):
     if not isinstance(groups, dict):
         groups = parse_groups(groups)
-    image, isyms = build_image(groups)
+    if isinstance(swing_settings, str):
+        swing_settings = parse_swing(swing_settings)
+    image, isyms = build_image(groups, swing_settings)
     blocks = (len(image) + 511) // 512
     if blocks > IMAGE_MAX_BLOCKS:
         raise ValueError(f"image is {len(image)} bytes, the overlay-3 slot holds "
@@ -172,6 +232,11 @@ def main():
     ap.add_argument("os")
     ap.add_argument("-o", "--out", required=True)
     ap.add_argument("--groups", default="")
+    ap.add_argument("--swing", default="",
+                    help="quantize + swing LOOPED takes: G:STYLE:AMOUNT (e.g. 16:mpc:58, "
+                         "8:sp1200:63) for all instruments, or I=G:STYLE:AMOUNT,... ; "
+                         "G = 4 4T 8 8T 16 16T 32 32T, STYLE = mpc (50-75) or sp1200 "
+                         "(50 54 58 63 67 71)")
     ap.add_argument("--auto-keep", action="store_true",
                     help="no KEEP = OLD NEW prompt after recording: keep NEW")
     ap.add_argument("--area", type=int, default=AREA_SIZE,
@@ -180,13 +245,15 @@ def main():
     a = ap.parse_args()
     os_bin = open(a.os, "rb").read()
     groups = parse_groups(a.groups)
-    patch, info = build(os_bin, groups, a.area, a.auto_keep)
+    swing_settings = parse_swing(a.swing)
+    patch, info = build(os_bin, groups, a.area, a.auto_keep, swing_settings)
     json.dump(patch, open(a.out, "w"), indent=1)
     used = sorted({g for g in groups.values() if g})
     print(f"{a.out}: loader {info['install_end'] - STAGE}/{STACK_LO - STAGE} bytes, "
           f"image {info['image_bytes']} bytes ({info['blocks']} blocks of "
           f"{IMAGE_MAX_BLOCKS}), code area {info['area_size']} bytes, "
-          f"{sum(1 for g in groups.values() if g)} keys in groups {used}")
+          f"{sum(1 for g in groups.values() if g)} keys in groups {used}"
+          + (f", swing {a.swing}" if swing_settings else ""))
     if a.disk:
         stock, out = a.disk
         img = epstool.load_image(stock)
