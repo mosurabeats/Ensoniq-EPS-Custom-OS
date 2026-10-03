@@ -1,10 +1,11 @@
 # EPS OS 2.49: what we know so far
 
-Source: `eps249os.exe`, a Chicken Systems "EPS/ASR DiskWriter" Windows 3.x
-installer. It contains `EXTRACTO/eps249os.ede` (a Giebler EDE disk image) and
-`ede.exe` (the DOS floppy writer). The installer's own archive format
-(Robert Salesas ASETUP `.ARV`, `ARCV`/`BLCK` chunks) is not a standard
-compressor. The easiest way to unpack it is to run the installer under Wine.
+Source: the stock OS 2.49 disk. `tools/fetch.sh` downloads it as
+`EPS249OS.hfe` from HxC2001's `QuickInstall_FloppyDiskImages.zip` and checks
+it against a second copy on archive.org (`eps-os-v-249`). Both hold the same
+OS file, SHA-256 `01911d8f…cb79e3`. The notes below were first made from
+`eps249os.ede` out of the Chicken Systems "EPS/ASR DiskWriter" installer, and
+it is the same OS. See docs/RESOURCES.md for every source.
 
 ## Disk image
 
@@ -134,11 +135,11 @@ Overlay 2 holds the sampling code along with the disk utilities.
 | `0xFF0212` | Filter cutoff index (default 11) |
 | `0xC06FFE` (ROM) | 40-byte table: rate index → default filter index |
 | `0xC07026` (ROM) | 40-byte table: rate index → sample-clock divisor |
-| `0xC0704E` (ROM) | Filter table: index → OP4–OP7 select bits (upper nibble) + OTIS bits (low 3) |
+| `0xC0704E` (ROM) | Filter table: index → one byte E. Bits 0–2 → sound chip → CA0–CA2, bits 4–6 → OP4–OP6 (see below) |
 | `0xFFE20E` | Reset filter from the rate (called from `0xFF45A0` when the rate parameter changes) |
 | `0xFFE2BA` | Sample clock: divisor × 4 → DUART counter (`movep.w` to CTUR/CTLR at `0x28000D`) |
-| `0xFFE2D6` | Sampling setup: OP2 on, then OP4–OP7 from the filter entry (`0xFFE2F6`), written via the DUART set/reset output-port registers (`0x28001D/1F`) |
-| `0xFFE358` | Splits the filter entry. Low bits go to OTIS reg `0x12` on a range of voice pages |
+| `0xFFE2D6` | Sampling setup: MUTE (OP2) high, then OP4–OP6 from E and OP7 from `0xFF0211` (`0xFFE2F6`), written via the DUART set/reset output-port registers (`0x28001D/1F`). A pin is high when its E bit is 1 |
+| `0xFFE358` | Reads E (`0xFFE38E`) and writes `(E & 7) \| 0x38` to sound-chip reg `0x200012` on a range of voice pages. Returns E in d0. Only caller is `0xFFE2F4` |
 | `0xFFE3E6` | Input level meter: reads the input sample from OTIS `0x200018`, peak and average |
 | `0xFFFD14` | Sampling defaults |
 
@@ -149,12 +150,68 @@ lines for the filter, so the lines are probably shared or latched. The
 service manual's analog test page lists exactly six analog inputs (pitch
 wheel, mod wheel, volume slider, CV pedal, data slider, patch-select
 buttons), which matches the scanner's six records. So OP4–OP6 are definitely
-the analog-mux select lines. How they also set the filter needs the
-schematic.
+the analog-mux select lines. The schematics (below) show how OP4 also sets the
+filter.
+
+### Sampling filter hardware (from the schematics)
+
+Source: *Ensoniq EPS Schematics* (archive.org `sm_Ensoniq_EPS_Schematics`),
+main board 4010007501 rev N (digital) / 4010007501 rev P (analog) and
+4010010002 rev L (1 MEG RAMS board). `tools/fetch.sh` downloads it.
+
+**DUART output port** (68681, U38 on 10002, U58 on 7501):
+
+| Pin | Net | Pin | Net |
+|---|---|---|---|
+| OP0 | DSEL (drive select) | OP4 | AN1 (mux select) + filter counter MSB |
+| OP1 | SSEL (side select) | OP5 | AN2 (mux select) |
+| OP2 | MUTE | OP6 | AN0 (mux select) |
+| OP3 | SREQ (counter/timer out = sample clock) | OP7 | MIC/LINE (preamp gain, 4053 U54) |
+
+Inputs: IP0 DSTAT, IP1 DSKCH, IP2/IP3 500 kHz (timer clock), X1 5 MHz.
+
+**Analog mux** (4051, U45 on 10002): Y0 pitch wheel, Y1 patch buttons, Y2 mod wheel,
+Y3 volume slider, **Y4 sampling input**, Y5 data slider, **Y6 sampling
+input**, Y7 pedal/CV. Channel = 4·AN2 + 2·AN1 + AN0. The sampling input is
+wired to both Y4 and Y6, so AN1 (OP4) can change without changing the mux
+input. During sampling AN2 must be 1 and AN0 must be 0.
+(Both Y4 and Y6 read "SAMPLE" on a low-resolution scan. This fits OP4 doubling
+as the counter MSB, and probe disks N ≥ 8 and N < 8 would show it.)
+
+**Anti-aliasing filter:** an XR-1008 switched-capacitor low-pass (U53 on 10002), always
+in the signal path between the input preamp and the A/D. It has no bypass.
+The cutoff follows its clock FCLK:
+
+```
+10 MHz -> 74LS161 (preset N = {D=AN1/OP4, C=CA2, B=CA1, A=CA0})
+       -> RCO -> 74LS74 (reload; held off by MUTE low) -> 74LS74 ÷2 -> FCLK
+FCLK = 10 MHz / (2 * (17 - N))     N = 0 … 15  ->  294 kHz … 2.5 MHz
+```
+
+The divider is drawn on the 7501 digital sheet (U37 74LS161A, U39 74LS74,
+sheet bottom right). On the 10002 sheet FCLK leaves the digital section
+through R74 (22 Ω); its source there is not traced yet, so check it on the
+10002 board before relying on it.
+
+CA0–CA2 are the sound chip's channel-address outputs (U43 on 7501, U37 on
+10002, marked **5504 DOC II**, i.e. ES5504, not ES5505/OTIS). So the filter
+code is split: E bits 0–2 go out through the sound chip (the `0x200012`
+write, presumably the voices' channel-assign field), and E bit 4 goes out on
+OP4. **Higher N = higher cutoff; N = 15 is the widest the hardware can do.**
+The XR-1008 clock-to-cutoff ratio is still unknown (50:1 or 100:1 is typical
+for these parts; at 100:1 the range is 2.9–25 kHz).
+
+Consequences:
+* A true filter bypass needs a hardware mod. In software, OUT = force N = 15.
+* E = `0x20 | (N & 8) << 1 | (N & 7)` keeps the mux on Y4/Y6.
+  `tools/filterprobe.py` builds one disk per N this way.
+* The earlier probe disks (which forced OP4–OP6 directly) mostly switched the
+  A/D to a wheel or slider. Only patterns 2 and 3 sampled audio.
 
 ### From the EPS/EPS-M service manual (P/N 9312 000 701-B)
 
-* No schematics; it's a module-swap manual. Boot EPROMs: **U26 = LOWER, U27
+* No schematics (they are a separate document, see above); it's a
+  module-swap manual. Boot EPROMs: **U26 = LOWER, U27
   = UPPER** on the main board. Boot ROM v2.0+ is needed for SCSI and OS ≥ 2.00.
 * Two main-board revisions: **7501**, and **10002** (serial ≥ 16582 /
   240 V ≥ 502603: new layout, gate array, different RAM chips). Filter and
@@ -201,18 +258,30 @@ probably into the boot ROM.
    `d3 = n + 7` before the read, so the unit isn't confirmed yet. We need to
    confirm the OS will load overlay 3 when asked.
 4. **How the boot code at file 0x14000 gets into the window**, and whether the loader always reads a full 8 KB (needed before appending code to it).
+5. **Boot ROM contents.** The display text, the TRAP layer, the parameter
+   descriptors and the sampling tables (`0xC06FFE`, `0xC07026`, `0xC0704E`)
+   are all in the 2 × 32 KB boot EPROMs (U26/U27 on 7501). MAME knows this
+   ROM set (`eps-l.bin` CRC32 `382beac1`, `eps-h.bin` CRC32 `d8747420`) but
+   doesn't ship it. Dumping the EPROMs of our own unit settles 1 and most
+   of the UI work.
+6. **XR-1008 clock-to-cutoff ratio** (no datasheet found yet), and which N
+   the stock table uses at each rate. The filter probe disks measure both.
 
 ## Reproducing
 
 ```sh
-# 1. Unpack the installer (Wine + a virtual display)
-apt-get install wine wine32:i386 xvfb xdotool
-Xvfb :9 & DISPLAY=:9 wine eps249os.exe   # press Enter through the wizard
-cp ~/.wine/drive_c/EXTRACTO/eps249os.ede build/
+apt-get install binutils-m68k-linux-gnu poppler-utils
+tools/fetch.sh                      # OS images + schematics/manuals -> build/
 
-# 2. Disk image -> OS binary -> disassembly
 python3 tools/epstool.py ls      build/eps249os.ede
-python3 tools/epstool.py extract build/eps249os.ede 0 build/eps_os_249.bin
 python3 tools/epstool.py info    build/eps_os_249.bin
 tools/disasm.sh build/eps_os_249.bin > build/eps_os_249.dis
 ```
+
+The schematic PDFs are scans without text. `pdfimages -j` gives the full
+2480 × 1760 pages.
+
+Older OS files land in `build/os_versions/`: EPS 2.2 and 2.45, and EPS-16+
+1.00–1.30 (the HxC files `EPS1xxOS.hfe` are EPS-16+ OSes, file name
+`EPS-16+ O.S.`). 2.45 is relocated against 2.49 (44k bytes differ), so compare
+routines, not offsets.

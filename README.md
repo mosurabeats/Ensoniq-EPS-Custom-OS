@@ -29,9 +29,15 @@ which catches a wrong OS version.
 
 ## Not in this repo
 
-Ensoniq's OS binaries and disk images are not committed (see `.gitignore`).
-Put your own copy of `eps249os.ede` in `build/`. The steps to get it from the
-Chicken Systems installer are in docs/ANALYSIS.md.
+Ensoniq's OS binaries, disk images and the reference PDFs are not committed
+(see `.gitignore`). `tools/fetch.sh` downloads them into `build/` and checks
+the OS checksum. Sources are listed in [docs/RESOURCES.md](docs/RESOURCES.md).
+
+```sh
+tools/fetch.sh        # build/eps249os.ede, eps_os_249.bin, os_versions/, refs/
+```
+
+`epstool.py` also reads HxC/Gotek `.hfe` images (`ls`, `extract`, `hfe2img`).
 
 ## Building a hook
 
@@ -47,8 +53,8 @@ The code-cave address is still open. See docs/ROADMAP.md.
 ## Filter probe disks
 
 ```sh
-python3 tools/filterprobe.py build/eps249os.ede build/filterprobe   # 8 test disks
+python3 tools/filterprobe.py build/eps249os.ede build/filterprobe   # 16 test disks
 ```
 
-Each disk forces one setting of the sampling filter-select lines. See
+Each disk forces one sampling-filter cutoff code N (0–15, 15 = widest). See
 docs/ROADMAP.md, feature 2.

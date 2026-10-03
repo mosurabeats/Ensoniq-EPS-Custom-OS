@@ -36,32 +36,47 @@ slice cutting the last. Voices still in their release tail are cut too.
 ### 2. Anti-aliasing filter OUT when sampling
 
 **Behaviour:** like the EPS-16+, the sampling FILTER CUTOFF gets an **OUT**
-setting that takes the input filter out of the path, so low sample rates
-alias (SP-1200 style crunch). If the hardware can't truly bypass the
-filter, OUT selects the widest setting regardless of sample rate.
+setting, so low sample rates alias (SP-1200 style crunch). The EPS hardware
+can't bypass the filter (see below), so OUT selects the widest cutoff
+whatever the sample rate.
+
+**Hardware** (schematics, see ANALYSIS.md → Sampling filter hardware): the
+filter is an XR-1008 switched-capacitor low-pass, always in the path. Its
+clock comes from a 10 MHz counter preset by a 4-bit code
+N = {OP4, CA2, CA1, CA0}: FCLK = 10 MHz / (2·(17 − N)), 294 kHz at N = 0 to
+2.5 MHz at N = 15. Higher N = higher cutoff.
 
 **How the stock OS handles it** (overlay 2, see ANALYSIS.md → Sampling):
 * Sample rate index `0xFF020F` (40 rates) → boot-ROM divisor table `0xC07026`
   → DUART counter/timer = sample clock.
-* Filter index `0xFF0212` → boot-ROM table `0xC0704E`. The upper bits drive
-  **DUART output bits OP4–OP7** (the analog filter select lines). The low
-  3 bits go to the OTIS chip.
+* Filter index `0xFF0212` → boot-ROM table `0xC0704E` → byte E. E bits 0–2
+  go to the sound chip (→ CA0–CA2), and bits 4–6 go to OP4–OP6. OP5/OP6 are
+  the analog-mux select and must stay on the sampling input (AN2 = 1,
+  AN0 = 0). OP4 is the counter's MSB.
 * Changing the rate resets the filter from a third ROM table (`0xC06FFE`), via
   `0xFF45A0` → overlay routine `0xFFE20E`.
 * The allowed cutoff range comes from parameter descriptors that aren't in
   the OS (presumably in the boot ROM).
 
-**Step 1: probe (ready to test).** `tools/filterprobe.py` builds 8 OS disks.
-Each forces one OP4–OP6 pattern at `0xFFE2F6` (overlay 2, an 8-byte in-place
-change). Sample white noise or cymbals at a low rate with each disk and
-compare. This shows which pattern is the widest or a true bypass.
+**Step 1: probe (ready to test).** `tools/filterprobe.py` builds 16 OS
+disks, one per N. Each replaces the table read at `0xFFE38E` with
+`moveq #E,d4` (4 bytes, overlay 2), with E = `0x20 | (N & 8) << 1 | (N & 7)`.
+Sample white noise or cymbals at a low rate with N = 15 and with the stock
+disk, and compare. Sweeping N also gives the XR-1008 cutoff ratio.
 
-**Step 2: OUT.** Map a filter setting to the bypass pattern. Two candidates:
+(The first probe disks forced OP4–OP6 directly. Six of the eight patterns
+switched the A/D to a wheel or slider, so they don't test the filter.)
+
+**Step 2: OUT.** Force N = 15 for one filter setting. Two candidates:
 * the top of the cutoff range means OUT (no UI change needed), or
 * a new OUT value past the top, which needs the range descriptor.
 
-Either way it's a few bytes in overlay 2 plus a small hook. Because it lives
+Either way it's a few bytes in overlay 2 at `0xFFE38E` (load E from our own
+small table, or `moveq #$37,d4` when the setting is OUT). Because it lives
 in the sampling overlay, it needs no resident space.
+
+**True bypass (optional hardware mod):** a switch that routes the signal
+around the XR-1008. Only worth it if N = 15 isn't crunchy enough.
 
 ### 3. Sequencer: MPC-style swing and quantize
 
@@ -134,7 +149,7 @@ expanded unit.
 | M2b | Code location for resident hooks (sample RAM reservation or a freed routine) | |
 | M3 | Mute groups v1 (groups set at build time) on hardware | hook written |
 | M4 | Display/parameter system decoded; mute group editable from the panel | |
-| M5 | Filter probe on hardware → filter OUT | probe disks ready |
+| M5 | Filter probe on hardware → filter OUT | 16 probe disks ready (redone after the schematics) |
 | M6 | Quantize + swing at record time; TIMING CORRECT | |
 | M7 | Mute group saved with the instrument | |
 

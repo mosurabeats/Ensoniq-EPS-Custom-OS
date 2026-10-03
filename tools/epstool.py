@@ -3,6 +3,7 @@
 
 Subcommands
   ede2img  IN.ede OUT.img            Expand a Giebler .EDE image to a raw 800K .img
+  hfe2img  IN.hfe OUT.img            Decode an HxC .hfe (Gotek/HxC) image to .img
   img2ede  IN.img OUT.ede [--template T.ede]
                                      Compress a raw .img back to .EDE
   ls       IMAGE                     List the root directory of an .img/.ede
@@ -93,10 +94,78 @@ def ede_encode(img, template=None):
     return bytes(header) + bytes(body) + b"\x00"
 
 
+# ---------------------------------------------------------------- HFE reader
+# HxC .hfe v1: 512-byte header, track table at block hdr[18], each track is
+# interleaved 256-byte chunks of side 0 / side 1, MFM bits LSB first. We find
+# IBM sync marks (0x4489), read IDAM + data fields and check both CRCs.
+
+def _crc16(data, crc=0xFFFF):
+    for b in data:
+        crc ^= b << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else crc << 1
+    return crc
+
+
+def _mfm_sectors(raw):
+    bits = "".join(format(b, "08b")[::-1] for b in raw)
+    bits += bits[:8192]                       # a sector may wrap the index
+    sync = "0100010010001001" * 3
+
+    def read(pos, n):
+        return bytes(int(bits[pos + 16 * i + 1:pos + 16 * i + 16:2], 2)
+                     for i in range(n))
+
+    idam = None
+    pos = bits.find(sync)
+    while pos != -1 and pos + 48 + 16 * 515 <= len(bits):
+        p = pos + 48
+        mark = read(p, 1)[0]
+        if mark == 0xFE:
+            hdr = read(p, 7)
+            idam = hdr[1:5] if _crc16(b"\xA1\xA1\xA1" + hdr) == 0 else None
+        elif mark in (0xFB, 0xF8) and idam:
+            size = 128 << idam[3]
+            data = read(p, 3 + size)
+            if _crc16(b"\xA1\xA1\xA1" + data) == 0:
+                yield idam[2], data[1:1 + size]
+            idam = None
+        pos = bits.find(sync, pos + 48)
+
+
+def hfe_decode(hfe):
+    if hfe[:8] != b"HXCPICFE":
+        sys.exit("not an HFE v1 image")
+    ntrk, nside = hfe[9], hfe[10]
+    lut = int.from_bytes(hfe[18:20], "little") * 512
+    secs = {}
+    for t in range(ntrk):
+        off = int.from_bytes(hfe[lut + 4 * t:lut + 4 * t + 2], "little") * 512
+        length = int.from_bytes(hfe[lut + 4 * t + 2:lut + 4 * t + 4], "little")
+        sides = [bytearray(), bytearray()]
+        for i in range(0, length, 512):
+            n = min(256, (length - i) // 2)
+            sides[0] += hfe[off + i:off + i + n]
+            sides[1] += hfe[off + i + 256:off + i + 256 + n]
+        for s in range(nside):
+            for r, data in _mfm_sectors(sides[s]):
+                secs.setdefault((t, s, r), data)
+    img = bytearray()
+    for b in range(NBLOCKS):
+        key = (b // 20, b // 10 % 2, b % 10)
+        if key not in secs:
+            sys.exit(f"HFE: block {b} (cyl {key[0]} head {key[1]} sec {key[2]}) "
+                     "missing or bad CRC")
+        img += secs[key]
+    return bytes(img)
+
+
 def load_image(path):
     data = open(path, "rb").read()
     if path.lower().endswith(".ede"):
         return bytearray(ede_decode(data))
+    if path.lower().endswith(".hfe"):
+        return bytearray(hfe_decode(data))
     if len(data) != NBLOCKS * BLOCK:
         sys.exit(f"{path}: expected {NBLOCKS * BLOCK} bytes, got {len(data)}")
     return bytearray(data)
@@ -229,6 +298,7 @@ def main():
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = p.add_subparsers(dest="cmd", required=True)
     a = sp.add_parser("ede2img"); a.add_argument("src"); a.add_argument("dst")
+    a = sp.add_parser("hfe2img"); a.add_argument("src"); a.add_argument("dst")
     a = sp.add_parser("img2ede"); a.add_argument("src"); a.add_argument("dst")
     a.add_argument("--template")
     a = sp.add_parser("ls"); a.add_argument("image")
@@ -243,6 +313,8 @@ def main():
 
     if args.cmd == "ede2img":
         open(args.dst, "wb").write(ede_decode(open(args.src, "rb").read()))
+    elif args.cmd == "hfe2img":
+        open(args.dst, "wb").write(hfe_decode(open(args.src, "rb").read()))
     elif args.cmd == "img2ede":
         tpl = open(args.template, "rb").read() if args.template else None
         open(args.dst, "wb").write(ede_encode(open(args.src, "rb").read(), tpl))
