@@ -95,8 +95,28 @@ first:
    about 60 bytes).
 3. **Dead code:** routines nothing calls. Candidates come from static
    analysis and must be confirmed.
-4. **A boot ROM dump** would show exactly which RAM the boot ROM and OS
+4. **Reserve a little sample RAM (best fit for an expanded EPS).** At boot, a
+   small installer loaded from overlay 3 would:
+   1. take ~1 KB for itself by lowering the sample area's upper bound (or
+      claiming the top of it),
+   2. copy the real-time hooks there, and
+   3. write the `jsr` into each hook site at run time.
+
+   With a 2x expander, 1 KB of sample RAM costs nothing noticeable. The
+   floppy patch then only needs a ~16-byte boot trigger ("load overlay 3,
+   call it, reload overlay 0" through the OS's own loader at `0xFF4E40`).
+   Two things need confirming on hardware first: that the 68000 can run code
+   from sample RAM, and what lives above `0xFF165A`.
+5. **A boot ROM dump** would show exactly which RAM the boot ROM and OS
    leave free.
+
+### Debug channel: MIDI out
+
+Until the display is decoded, the easiest way to see inside a running EPS is
+a debug patch that sends memory values as SysEx on MIDI out (sample bounds,
+expander size, overlay state), captured with any MIDI monitor on a computer.
+This is the first hardware experiment: it confirms the memory map on your
+expanded unit.
 
 ## Milestones
 
@@ -104,7 +124,8 @@ first:
 |---|---|---|
 | M0 | Installer unpacked, EDE ⇄ IMG, OS extract/replace, patch tool, disassembly | **done** |
 | M1 | Memory layout: resident part, overlays, stack, voice engine | **done** (see ANALYSIS.md) |
-| M2 | Code location for resident hooks, and a "hello world" patch confirmed on hardware | next |
+| M2 | MIDI-out debug patch on hardware: dump sample bounds and memory size from an expanded EPS | next |
+| M2b | Code location for resident hooks (sample RAM reservation or a freed routine) | |
 | M3 | Mute groups v1 (groups set at build time) on hardware | hook written |
 | M4 | Display/parameter system decoded; mute group editable from the panel | |
 | M5 | CHOP (equal slices) in overlay 3; SNAP and LINK | |

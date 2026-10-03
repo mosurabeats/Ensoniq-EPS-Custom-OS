@@ -102,6 +102,26 @@ base, `+42/+44` start-queue links, `+150/+152` level.
 | `0xFFBA92` | Drains the start queue `0xFF16E8` into `0xFFB4E8` |
 | `0xFFB65C` | Stop all voices |
 
+### Sample memory and the memory expander
+
+The boot ROM sizes sample RAM (base EPS, or with the 2x/4x expander) and
+leaves the bounds in two longs that the OS **only reads**:
+
+| Variable | Use |
+|---|---|
+| `0xFF1656` | Sample memory start. The voice-start routine subtracts it from wavesample addresses, and a range check compares it with `0x580000` |
+| `0xFF165A` | Upper bound of the sample area. A system buffer is set up at this address (`0xFF86EE`) and it is used as a base (`0xFF415E`), so the OS uses what sits above it |
+| `0xFF1649` | Flag derived from bit 0 of the boot ROM version word `0xC00134` (`0xFF242A`) |
+| `0xFF164C` | Copy of the boot ROM version word |
+
+So patches must never hard-code sample addresses. They must read the
+bounds, and then they work the same on a stock, 2x or 4x EPS.
+
+The first 512 bytes of the OS file (`0xFF2000–0xFF21FF`) don't match what is
+in RAM at run time. Code branches into this block (`bsr 0xFF21AC`) where the
+file holds data, and calls `jsr 0x2080` into an all-zero area. The boot ROM
+probably fills it with vectors and trampolines, so it is **not** free space.
+
 ### Sequencer (partial)
 
 96 ticks per quarter note. `0xFF1602` = bar length (384 in 4/4).
