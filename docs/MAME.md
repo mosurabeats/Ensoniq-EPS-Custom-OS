@@ -143,6 +143,20 @@ On the stock OS all three notes ring. With instrument 1 mono, each note
 starts the fast kill on the one before (gone ~80 ms later). With the kit
 groups, E2 cuts C2 but G2, which is in no group, leaves E2 alone.
 
+## The sequencer tests
+
+Each records a 1-bar kick, then loop-records over it in LOOPED mode
+(`mame/loop.lua` sets it at 36 s), and compares a stock-OS disk with ours.
+`mame/takes.lua` prints each take after its loop wrap and the final take
+after STOP.
+
+```sh
+python3 mame/test_loop_record.py  # --auto-keep: no KEEP prompt, the take plays back
+python3 mame/test_swing.py        # --swing 16:mpc:58: takes land on the swung grid
+python3 mame/test_undo.py         # --undo: RECORD takes out this pass's, then the
+                                  # last pass's notes (mame/keys/loop_undo.txt)
+```
+
 ## How the OS reads the disk (and why stock MAME failed)
 
 The boot ROM's loader (`0xC0C046`) polls the WD1772. After boot the OS

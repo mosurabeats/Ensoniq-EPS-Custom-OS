@@ -1,0 +1,42 @@
+# Loop undo: record a 1-bar kick, then loop-record over it (LOOPED, set by
+# mame/loop.lua at 36 s) with RECORD presses as undo. Passes start about
+# 37.25, 39.65, 42.05 and 44.45 s (2.4 s a bar). Use with mame/undo.lua.
+# Buttons: RECORD 3, PLAY 29, STOP/CONTINUE 23, ENTER 35 (docs/MAME.md).
+10.5 8f 00    # LOAD
+10.65 0f 00
+11.5 a3 00    # ENTER
+11.65 23 00
+12.5 82 00    # instrument 1: load TR 8O8
+12.65 02 00
+29.0 82 00    # select instrument 1
+29.15 02 00
+30.0 83 00    # hold RECORD
+30.2 9d 00    # + PLAY: record a new sequence
+30.35 1d 00
+30.5 03 00
+31.0 80 40    # C2 (kick)
+31.1 00 40
+33.0 97 00    # STOP: "001 BARS - KEEP TRACK?"
+33.15 17 00
+34.0 a3 00    # ENTER: keep (1 bar)
+34.15 23 00
+37.0 83 00    # hold RECORD
+37.2 9d 00    # + PLAY: loop recording
+37.35 1d 00
+37.5 03 00
+38.5 82 60    # pass 1: D2 (snare), 1.25 s into the bar
+38.6 02 40
+40.0 87 60    # pass 2: G2 (open hat)
+40.1 07 40
+40.3 83 00    # RECORD: undo -> this pass's G2
+40.45 03 00
+42.3 83 00    # pass 3, nothing played yet: undo -> pass 1's D2 (not heard at 43.3)
+42.45 03 00
+43.0 8a 60    # pass 3: A#2 (closed hat), kept
+43.1 0a 40
+45.0 97 00    # STOP
+45.15 17 00
+47.0 9d 00    # PLAY: play the sequence back
+47.15 1d 00
+52.0 97 00    # STOP
+52.15 17 00

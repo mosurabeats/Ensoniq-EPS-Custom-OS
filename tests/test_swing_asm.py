@@ -147,6 +147,34 @@ class SwingAsmTest(unittest.TestCase):
             with self.subTest(n=n):
                 self.check(w, settings)
 
+    def test_kill(self):
+        """swing_kill: tagged notes in the kill mask (d4 bits 16+n) are left
+        out (undo at STOP), the rest quantized as usual."""
+        e = self.eps
+        rnd = random.Random(9)
+        for n in range(200):
+            evs = S.split(random_take(rnd, rnd.choice([192, 768])))
+            for ev in evs:
+                if S.is_note(ev):
+                    ev[2] |= rnd.choice([0, 0, rnd.randrange(16)])
+            words = [w for ev in evs for w in ev]
+            kill = rnd.randrange(0x10000) & 0xFFFE
+            settings = rnd.choice([{}, {0: (12, "mpc", 58)}, {0: (24, "sp1200", 2), 1: (12, "mpc", 66)}])
+            data = b"".join(w.to_bytes(2, "big") for w in words)
+            e.write(TAKE, data)
+            e.write(SETTINGS, settings_table(settings))
+            end = TAKE + len(data)
+            r = e.call(self.syms["swing_kill"], max_insns=20_000_000, a0=TAKE, a1=end,
+                       a2=end, a3=SCRATCH_END, a4=SETTINGS, d4=kill << 16)
+            out = e.read(TAKE, (r["a1"] & 0xFFFFFF) - TAKE)
+            got = [int.from_bytes(out[i:i + 2], "big") for i in range(0, len(out), 2)]
+            exp = S.quantize_take(words, settings, kill)
+            with self.subTest(n=n):
+                if got != words:                    # re-encoded
+                    self.assertEqual(got, exp)
+                else:
+                    self.assertEqual(S.notes(got), S.notes(exp))
+
     def test_quantized_take_is_stable(self):
         """Quantizing again changes nothing (what makes re-quantizing every
         pass the same as quantizing at record time)."""

@@ -501,18 +501,25 @@ supervisor stack `0xFFC960`, the stack area `0xFFC994`, and the task table
 * **Sequencer playback** builds note messages at `0xFF654C` (type 8 or 10;
   `+4` key, `+5`, `+6` velocity, `+7` instrument bit) and sends them to
   `0xFFCBAA`, plus MIDI out through trap 12 when `0xFF16A6` enables it.
-* The sequencer is a state machine: `0xFF8028`/`0xFF802A` hold state handler
-  addresses (`0xFF58D6`, `0xFF591E`, `0xFF5942` …); LOOPED record mode
+* The sequencer is a state machine: `0xFF8028`/`0xFF802A` (saved) hold
+  state handler addresses. Seen in MAME: `0xFF588E` stopped, `0xFF58B2`
+  playing, `0xFF58D6` recording over a track, `0xFF5942` recording a new
+  sequence (`0xFF815A` bit 1 set) and, briefly, each LOOPED wrap (saved
+  state `0x58D6`), `0xFF58FA` after STOP. LOOPED record mode
   (`0xFF815F` = 2) branches off them; `0xFF815E` = keep OLD/NEW.
 * **Sequencer task** (task 3, entry `0xFF583A`, control block `0xFFCBC0`):
   waits on `trap #6`, then dispatches the message type through the table
-  that the state word `0xFF8028` points to (stopped: `0xFF588E`; recording:
+  that the state word `0xFF8028` points to (stopped: `0xFF588E`; recording a new sequence:
   `0xFF5942`). Messages are dropped while `0x160A` = 1 and `0x160D` ≠ 0.
   Transport buttons arrive as type `0x16` with the button (id − 0x40) at
   `+4` and press 1 / release 2 at `+6` (sent by the panel handler
-  `0xFF9774`). In the stopped state they go to `0xFF7AA4`: RECORD (0) only
-  sets bit 7 of `0xFF815A` while held, so recording is RECORD held + PLAY,
-  as on the real EPS. MAME confirms: "SEQUENCE 01 BAR=1", state `0x5942`.
+  `0xFF9774`). In every state they go to `0xFF7AA4`, which
+  hands the button to entry 14 + button of the state's table (PLAY with
+  RECORD held counts as RECORD). RECORD (0) only sets bit 7 of `0xFF815A`
+  while held, so recording is RECORD held + PLAY, as on the real EPS
+  (MAME: "SEQUENCE 01 BAR=1", state `0x5942`). While recording over a
+  track (`0x58D6`) RECORD and PLAY do nothing (entries 14 and 15 are the
+  no-op `0xFF588A`): loop undo uses RECORD there.
 * **Recording writes a delta-time event stream** (in MAME, at `0x580220…`
   in the internal 512 KB). On a played note, `0xFF7388` first flushes the
   ticks since the last event (`0xFF804A`) as time events (`0x8B90 | …`, or
@@ -557,6 +564,20 @@ supervisor stack `0xFFC960`, the stack area `0xFFC994`, and the task table
     sets bit 15 of its first word). A note just played arrives with bit 15
     clear; events copied from the previous take have it set.
   * `0xFF8038` (long) = position in the loop in ticks = the take time.
+  * Playback and the copy into the next take are one step: the decoder
+    (`0xFF67C4`…`0xFF68AC`) reads an event of the played take into the
+    staging area (`+8` its words, `+6` its gap, `+18` key, `+19`
+    velocity, `+21` word count) and jumps to the handler for its type
+    (table `0xFF6368`; notes `0xFF638A`). The note handler starts a voice
+    (`0xFF63D6`), sets the wait from the gap (`0xFF637A`) and then copies
+    the event into the take being written if LOOPED recording
+    (`0xFF7586`: `0xFF5F28` clears the gap, `0xFF737A` writes it).
+  * The OS writes ticks only when it writes an event (`0xFF7388`): the
+    time since the last event goes into that event's 7-bit gap, or a
+    time event when bit 6 of `0xFF815A` is set or the gap is too long. So
+    an event that's never written leaves no hole in the timing.
+  * Velocity is read as `((w2 >> 3) & 0xFF) >> 1` (`0xFF6882`): bits 3–0
+    of a note's last word are unused (0 in recordings).
   * Held notes being recorded: list at `0xFF8134` (+0 next, +2 duration,
     +6 = offset of the duration word, bit 0 = buffer B). Note-off writes
     the duration there (`0xFF74C2`).
@@ -570,6 +591,17 @@ supervisor stack `0xFFC960`, the stack area `0xFFC994`, and the task table
   pass adding 16 new 16ths costs 2.4 ms at the wrap (0.6 ms stock),
   scaling with the notes added in that pass, not the take's size. Notes
   land at the swung grid on the next pass, like an MPC.
+* **Loop undo** (ROADMAP #2, `--undo`, on with `--swing`): the append hook
+  tags each note played with the pass's generation (1–15) in bits 3–0 of
+  its last word; copies keep only the last pass's tag. RECORD (hook in
+  `0xFF7AA4` at `0xFF7AD4`) while loop recording adds a tag to the kill
+  mask: this pass's if notes were played in it, else the last pass's. The
+  note handler hook (`0xFF638A`) skips killed notes of the take being
+  played (no voice, no copy; just `0xFF637A` for the gap), so they drop
+  out of the next take with the timing intact; the kill mask lasts one
+  more pass for the notes still in the take being played. STOP re-encodes
+  the final take without them (swing_kill) and clears the tags before
+  the commit. MAME: `mame/test_undo.py`.
 
 ### Unused and unfinished bits
 
@@ -636,6 +668,10 @@ routines, not the machine. `python3 -m unittest discover tests` runs:
   boot ROMs) on the real init stack, with the kernel's data above the staging
   bytes, and the mute hook through the installed jsr.
 * `tests/test_swing.py`: the reference swing math in `tools/swing.py`.
+* `tests/test_swing_asm.py`: `src/swing.s` against `tools/seqstream.py`
+  (MAME takes, random takes, log mode, held notes, undo's kill).
+* `tests/test_undo.py`: the loop undo hooks (tags, RECORD, the playback
+  skip, STOP) with the OS state set up as MAME shows it.
 
 MAME (`mame/`, docs/MAME.md) runs the whole machine: the boot ROM loads the
 OS from a disk image, and the OS boots to its main loop. That caught the

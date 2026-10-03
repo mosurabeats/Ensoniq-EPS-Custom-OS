@@ -66,6 +66,7 @@ mame/run.sh build/test/EPS249_MUTETEST.img      # boot a disk, print the display
 tools/fetch.sh sounds && python3 mame/test_mutegroups.py   # mute groups with a real kit
 python3 mame/test_loop_record.py                         # loop recording, auto-keep
 python3 mame/test_swing.py                               # swing quantize of LOOPED takes
+python3 mame/test_undo.py                                # loop undo (RECORD while loop recording)
 ```
 
 `tools/epstool.py add OS.img SOUNDS.gkh 1 OUT.img` copies an instrument onto
@@ -85,8 +86,9 @@ Use `.img` instead of `.hfe` as the output name for a disk to boot in MAME.
 
 Options: `--groups` (mute groups), `--swing 16:mpc:58` or per instrument
 `1=16:mpc:58,2=8:sp1200:63` (quantize + swing LOOPED recording),
-`--auto-keep` (no KEEP = OLD NEW prompt). `tools/mkdrums.sh` builds the
-drum disk with all three.
+`--undo` (RECORD while loop recording takes out the last notes played; on
+with `--swing` too), `--auto-keep` (no KEEP = OLD NEW prompt).
+`tools/mkdrums.sh` builds the drum disk with all of them.
 
 `.hfe` output keeps the stock disk's track layout and works on any Gotek
 firmware. See docs/HARDWARE_TESTS.md for what to try on the EPS.

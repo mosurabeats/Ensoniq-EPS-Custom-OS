@@ -38,7 +38,7 @@
 .endif
 
         .text
-        .globl  swing_take, swing_full, quantize
+        .globl  swing_take, swing_full, swing_kill, quantize
 
 | swing_take: the fast path (below), and swing_full on what it leaves if it
 | has to stop. Same interface as swing_full.
@@ -51,12 +51,17 @@ swing_take:
         rts                             | (a1: same size, unchanged)
 
 swing_full:
+        moveq   #0,d4
+| swing_kill: swing_full that also leaves out the notes whose tag n (bits
+| 3-0 of the last word, written by src/looprec.s for undo) has bit 16+n of
+| d4 set.
+swing_kill:
         move.l  a1,-(sp)                | the original end, for giving up
         movea.l a2,a5
         moveq   #0,d7
         moveq   #0,d6
         move.l  #0x7FFFFFFF,d5
-        moveq   #0,d4
+        clr.w   d4
         movea.l a0,a6
 
 | (1) records
@@ -97,7 +102,17 @@ swing_full:
         move.w  d3,6(a5)                | length in bytes
         cmpi.w  #0xB0,d1
         bhs.s   15f
-        bset    #0,d4                   | a note: quantize?
+        moveq   #15,d1                  | a note. Killed (undo)?
+        and.w   -2(a6),d1
+        beq.s   25f
+        addi.w  #16,d1
+        btst    d1,d4
+        beq.s   25f
+        bset    #1,d4                   | yes: no record, re-encode
+        bra.s   26f
+25:     bset    #0,d4                   | quantize?
+        cmp.l   d6,d7
+        beq.s   16f                     | at the floor: stays (a downbeat)
         moveq   #15,d1
         and.w   d0,d1
         cmpi.w  #8,d1
@@ -125,7 +140,7 @@ swing_full:
         bne.s   16f
         move.l  d7,d5
 16:     addq.l  #8,a5
-        cmpi.w  #2,d3                   | 1-word events carry no gap
+26:     cmpi.w  #2,d3                   | 1-word events carry no gap
         bls     10b
         andi.w  #0x7000,d0              | gap: w0 bits 14-12, last word 14-11
         lsr.w   #8,d0

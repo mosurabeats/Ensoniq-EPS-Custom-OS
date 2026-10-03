@@ -54,7 +54,7 @@ hooks:
         .long   0xFFACA4                | note-on for one instrument (D5)
         .word   mute_hook-image
         .byte   0x30,0x05,0xD0,0x40,0x32,0x7C,0xDF,0x70
-.if SWING
+.if LOOPREC
         .long   0xFF6742                | LOOPED wrap: jsr 0x6B12; jsr 0x6AD6
         .word   wrap_hook-image
         .byte   0x4E,0xB8,0x6B,0x12,0x4E,0xB8,0x6A,0xD6
@@ -64,12 +64,18 @@ hooks:
         .long   0xFF6E56                | append: lea 8(a4),a0; ori.w #$8000,(a0)
         .word   append_hook-image
         .byte   0x41,0xEC,0x00,0x08,0x00,0x50,0x80,0x00
+        .long   0xFF638A                | note playback: moveq #0,d1; move.b 3(fp),d1; move.l d1,d0
+        .word   play_hook-image
+        .byte   0x72,0x00,0x12,0x2E,0x00,0x03,0x20,0x01
+        .long   0xFF7AD4                | RECORD: cmpi.b #1,6(a5); bne.s 0xFF7B18
+        .word   rec_hook-image
+        .byte   0x0C,0x2D,0x00,0x01,0x00,0x06,0x66,0x3C
 .endif
         .long   0
 
         .include "mutegroup.s"
         .space  MUTE_TABLE_SIZE         | set at build time (--groups)
-.if SWING
+.if LOOPREC
         .include "looprec.s"
 .endif
 

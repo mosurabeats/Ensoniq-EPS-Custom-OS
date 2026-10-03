@@ -109,14 +109,26 @@ def encode(timed):
     return words
 
 
-def quantize_take(words, settings):
+def tag(ev):
+    """A note's pass tag: bits 3-0 of its last word (src/looprec.s writes
+    them during LOOPED recording; playback ignores them)."""
+    return ev[2] & 0xF if is_note(ev) else 0
+
+
+def clear_tags(words):
+    return [w for ev in split(words) for w in (ev[:2] + [ev[2] & 0xFFF0] if is_note(ev) else ev)]
+
+
+def quantize_take(words, settings, kill=0):
     """Quantize the notes of a take. settings: {instrument 0-7: (grid,
     style, amount)} (instruments not listed stay as played). Notes keep
     their order relative to events at the same new time; notes that land
     on or after the end wrap to the start of the take; nothing moves before
     the take's opening events (start marker and controller states, at tick
-    1 in recordings), and notes already at that time stay (a downbeat)."""
+    1 in recordings), and notes already at that time stay (a downbeat).
+    kill: notes whose tag n has bit n set in it are left out (undo)."""
     timed, _ = decode(words)
+    timed = [(t, ev) for t, ev in timed if not kill >> tag(ev) & 1 or not tag(ev)]
     end = next((t for t, ev in timed if code(ev[0]) == END), None)
     first_note = next((i for i, (t, ev) in enumerate(timed) if is_note(ev)), len(timed))
     floor = timed[first_note - 1][0] if first_note else 0

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build EPS249_DRUMS: OS 2.49 + code area with mute groups, swing quantize
+# Build EPS249_DRUMS: OS 2.49 + code area with mute groups, swing quantize and undo
 # for LOOPED recording, auto-keep (no KEEP = OLD NEW prompt) + the TR 8O8 and
 # LIVE KIT kits from Ensoniq's factory drum disk 9 (tools/fetch.sh sounds).
 # Writes build/test/EPS249_DRUMS.hfe (Gotek) and .img (MAME).

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build the code-area patch: our resident code in the top of sample RAM.
 
-  mkcodearea.py OS.bin -o PATCH.json [--groups SPEC] [--swing SPEC] [--auto-keep]
-                [--area BYTES]
+  mkcodearea.py OS.bin -o PATCH.json [--groups SPEC] [--swing SPEC] [--undo]
+                [--auto-keep] [--area BYTES]
                 [--disk STOCK.ede|STOCK.hfe OUT.img|OUT.ede|OUT.hfe]
 
 The patch has three edits to the OS file:
@@ -21,6 +21,10 @@ The loader writes the hook jsr's at boot.
   kick (C2) and snare (D2) cutting each other and hats in their own group:
     --groups 1:C2=1,1:D2=1,1:F#2-A#2=2
   The old form "1,1,2,0,0,0,0,0" (one group per instrument) still works.
+
+--swing quantizes LOOPED takes at every wrap (see --help). --undo, or
+--swing, adds loop undo: RECORD pressed while loop recording takes out the
+notes played so far in this pass, or if there are none the last pass's.
 """
 import re
 import argparse
@@ -157,11 +161,13 @@ def swing_table(settings):
     return bytes(t)
 
 
-def build_image(groups, swing_settings=None):
+def build_image(groups, swing_settings=None, undo=False):
     """Stage 2 (src/codearea.s) at offset 0, mute table (and swing table)
-    filled in and the checksum set so all words sum to 0.
-    Returns (bytes, symbols)."""
-    code, syms = mkhook.assemble(IMAGE_SRC, 0, "image", {"SWING": 1 if swing_settings else 0})
+    filled in and the checksum set so all words sum to 0. The loop-record
+    code (src/looprec.s: swing and undo) is in it with swing settings or
+    undo. Returns (bytes, symbols)."""
+    looprec = bool(swing_settings) or undo
+    code, syms = mkhook.assemble(IMAGE_SRC, 0, "image", {"LOOPREC": 1 if looprec else 0})
     table = group_table(groups)
     off = syms["mute_table"]
     code[off:off + len(table)] = table
@@ -184,12 +190,12 @@ AUTO_KEEP = {"addr": "0xFF2702", "expect": "31fc0002c2ec0c380000",
              "data": "11fc0001815e" + "6000" + ((0xFF2652 - 0xFF270A) & 0xFFFF).to_bytes(2, "big").hex()}
 
 
-def build(os_bin, groups="", area_size=None, auto_keep=False, swing_settings=None):
+def build(os_bin, groups="", area_size=None, auto_keep=False, swing_settings=None, undo=False):
     if not isinstance(groups, dict):
         groups = parse_groups(groups)
     if isinstance(swing_settings, str):
         swing_settings = parse_swing(swing_settings)
-    image, isyms = build_image(groups, swing_settings)
+    image, isyms = build_image(groups, swing_settings, undo)
     blocks = (len(image) + 511) // 512
     if blocks > IMAGE_MAX_BLOCKS:
         raise ValueError(f"image is {len(image)} bytes, the overlay-3 slot holds "
@@ -237,6 +243,9 @@ def main():
                          "8:sp1200:63) for all instruments, or I=G:STYLE:AMOUNT,... ; "
                          "G = 4 4T 8 8T 16 16T 32 32T, STYLE = mpc (50-75) or sp1200 "
                          "(50 54 58 63 67 71)")
+    ap.add_argument("--undo", action="store_true",
+                    help="RECORD while loop recording takes out the last notes played "
+                         "(on with --swing too)")
     ap.add_argument("--auto-keep", action="store_true",
                     help="no KEEP = OLD NEW prompt after recording: keep NEW")
     ap.add_argument("--area", type=int, default=AREA_SIZE,
@@ -246,14 +255,15 @@ def main():
     os_bin = open(a.os, "rb").read()
     groups = parse_groups(a.groups)
     swing_settings = parse_swing(a.swing)
-    patch, info = build(os_bin, groups, a.area, a.auto_keep, swing_settings)
+    patch, info = build(os_bin, groups, a.area, a.auto_keep, swing_settings, a.undo)
     json.dump(patch, open(a.out, "w"), indent=1)
     used = sorted({g for g in groups.values() if g})
     print(f"{a.out}: loader {info['install_end'] - STAGE}/{STACK_LO - STAGE} bytes, "
           f"image {info['image_bytes']} bytes ({info['blocks']} blocks of "
           f"{IMAGE_MAX_BLOCKS}), code area {info['area_size']} bytes, "
           f"{sum(1 for g in groups.values() if g)} keys in groups {used}"
-          + (f", swing {a.swing}" if swing_settings else ""))
+          + (f", swing {a.swing}" if swing_settings else "")
+          + (", loop undo" if swing_settings or a.undo else ""))
     if a.disk:
         stock, out = a.disk
         img = epstool.load_image(stock)

@@ -131,8 +131,15 @@ The drum disk also has:
   at MPC 58%. Record in LOOPED mode and each pass's hits land on the swung
   grid from the next pass on, like an MPC's timing correct.
 * **Auto-keep**: after recording over a track (any record mode), STOP keeps
-  the new take without the "KEEP = OLD NEW" prompt. There's no undo yet,
-  so don't record over anything precious.
+  the new take without the "KEEP = OLD NEW" prompt. Outside loop recording
+  there's no undo, so don't record over anything precious.
+* **Loop undo**: while loop recording (LOOPED), press RECORD (just RECORD,
+  not RECORD + PLAY) to take out the most recent notes, a pass at a time:
+  the notes you played so far in this pass, or if you haven't played any
+  yet, the last pass's. A second press then takes out the pass before
+  (only the last finished pass can be undone). Notes from earlier passes
+  go quiet right away; notes from this pass stop at the next wrap. There's
+  no message on the display.
 
 **Try:** hold or let ring the open hat, then hit the closed hat: the open hat
 stops. Roll the 808 kick on C2: each hit cuts the last one's boom. In MAME

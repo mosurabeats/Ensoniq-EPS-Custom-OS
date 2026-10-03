@@ -161,17 +161,19 @@ instruments with per-key wavesamples.
 | # | Feature | Why | Size / where |
 |---|---|---|---|
 | 1 | Mute groups | hats, mono chops | done in emulator; hardware test 1 |
-| 2 | MPC-style loop recording: record-time timing correct + MPC60/3000/SP-1200 swing, **per-track swing**, no KEEP prompt, **undo last pass** | the core feel | no KEEP prompt **done**; swing quantize per instrument **done** (`--swing`, set at build time; MAME-tested); undo next; then a panel page for the swing settings |
+| 2 | MPC-style loop recording: record-time timing correct + MPC60/3000/SP-1200 swing, **per-track swing**, no KEEP prompt, **undo last pass** | the core feel | no KEEP prompt **done**; swing quantize per instrument **done** (`--swing`, set at build time; MAME-tested); undo **done** (RECORD while loop recording; MAME-tested); next a panel page for the swing settings |
 | 3 | **Full level** per instrument (fixed velocity 127, like the MPC) | today: edit levels/envelopes by hand | tiny hook in note-on |
 | 4 | **One-shot** per instrument (key-up ignored, sample plays through) | today: edit release/sustain by hand | small hook in note-off |
 | 5 | **CHOP** (below) | chopping by hand is tedious | overlay 3 (new command) |
-| 6 | **Erase while loop recording** (hold a button + key: that key's notes are erased as the loop passes) | fix takes without stopping | code area |
+| 6 | **Erase while loop recording** (hold a button + key: that key's notes are erased as the loop passes) | fix takes without stopping | code area; the undo playback skip (`0xFF638A` hook) already drops notes from a take without touching the timing |
 | 7 | Note repeat while recording (held key repeats at the grid, swung) | rolls | code area, sequencer clock |
 | 8 | Very last: sampling crunch (stock FILTER CUTOFF 20.0 KHZ at low rates first, then filter OUT), S900 filter, render effects | tone | overlay 2 / 3 |
 
-The code area is 4 KB (about 600 bytes used by mute groups); its image can
-grow to 8 KB on disk (the overlay-3 slot), and the area can grow further
-(`mkcodearea.py --area`) at the cost of sample memory.
+The code area is 4 KB with mute groups only (about 600 bytes of code); with
+the loop-record code (swing, undo) the image is about 4.5 KB and the area
+grows to 5 KB by itself. The image can grow to 8 KB on disk (the overlay-3
+slot), and the area further (`mkcodearea.py --area`), at the cost of
+sample memory.
 
 ### 5. CHOP: automatic non-destructive chopping
 
