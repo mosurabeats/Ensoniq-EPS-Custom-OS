@@ -16,6 +16,7 @@ python3 tools/epstool.py extract eps249os.ede 0 os.bin     # pull the OS file
 python3 tools/epstool.py patch   os.bin patches/x.json os_new.bin
 python3 tools/epstool.py replace eps249os.ede 0 os_new.bin custom.img   # Gotek/HxC image
 python3 tools/epstool.py replace eps249os.ede 0 os_new.bin custom.ede   # for EDE writers
+python3 tools/epsfloppy.py write custom.ede                # to a real floppy, see below
 tools/disasm.sh os.bin > os.dis                            # m68k disassembly @ 0xFF2000
 ```
 
@@ -26,6 +27,31 @@ which catches a wrong OS version.
 ```json
 {"name": "example", "edits": [{"addr": "0xFF221C", "expect": "4E75", "data": "4E71"}]}
 ```
+
+## Writing real floppies
+
+```sh
+python3 tools/epsfloppy.py devices                    # what hardware is attached
+python3 tools/epsfloppy.py write custom.ede           # Greaseweazle, drive A
+python3 tools/epsfloppy.py read  backup.ede           # dump an EPS disk
+sudo python3 tools/epsfloppy.py write custom.ede --fdc /dev/fd0   # PC floppy port, Linux
+```
+
+**A regular USB floppy drive can't write EPS disks.** An EPS disk has 10
+sectors per track numbered from 0. USB floppy drives only make PC formats
+(9 or 18 sectors per track, numbered from 1), and their firmware won't take
+anything else. Use one of these:
+
+* **Greaseweazle**: a USB adapter plus any standard PC 3.5" floppy drive.
+  Works on Linux, macOS and Windows. Install its tool with
+  `pip install greaseweazle`. `epsfloppy.py` runs
+  `gw write --format=ensoniq.800` and verifies the disk.
+* **A motherboard floppy port** on a Linux PC (`--fdc /dev/fd0`, root).
+  The kernel driver is set to the zero-based 10-sector layout, then the tool
+  formats the disk, writes it and reads it back to check.
+* **Gotek/FlashFloppy** in the EPS: no floppies at all (see Testing in ROADMAP).
+
+Use DD disks, or tape over the hole on an HD disk.
 
 ## Not in this repo
 
