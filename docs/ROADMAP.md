@@ -33,37 +33,35 @@ slice cutting the last. Voices still in their release tail are cut too.
 | v2 | Edit the group on the instrument page from the front panel | needs the display/parameter system decoded |
 | v3 | Save the group with the instrument file (spare header byte) | needs the instrument format mapped |
 
-### 2. Auto-chop across keys, then adjust start/end
+### 2. Anti-aliasing filter OUT when sampling
 
-**Behaviour:**
-1. Select a wavesample and run **CHOP** (new command on the Edit Wavesample
-   command page). Choose the slice count (2/4/8/16/32) or **TRANSIENT** with a
-   sensitivity setting, and a root key.
-2. The OS creates one wavesample per slice, each on its own key from the root
-   upward. Each slice's root key is set to its own key, so it plays at
-   original pitch. Slices point into the **same** sample memory, so no RAM is
-   used for audio.
-3. Adjusting a slice: play its key to select it, then move **start/end** with
-   the data slider or the up/down buttons. Two new options:
-   * **SNAP**: edits jump to the nearest zero crossing, so no clicks.
-   * **LINK**: moving a slice's end also moves the next slice's start, so the
-     break stays gapless.
-4. Optionally set the instrument's mute group (feature 1) so slices choke.
+**Behaviour:** like the EPS-16+, the sampling FILTER CUTOFF gets an **OUT**
+setting that takes the input filter out of the path, so low sample rates
+alias (SP-1200 style crunch). If the hardware can't truly bypass the
+filter, OUT selects the widest setting regardless of sample rate.
 
-**What the OS already gives us:** the voice-start routine
-(`0xFFB4E8`) reads a wavesample's start/end/loop pointers from its parameter
-block (`+240`, `+248`, `+256`, `+264`, stored as interleaved bytes and read
-with `movep.l`). The OS also supports sample-start modulation (`+280…+284`).
-Chopping is mostly "make N parameter blocks with different start/end
-pointers and key ranges".
+**How the stock OS handles it** (overlay 2, see ANALYSIS.md → Sampling):
+* Sample rate index `0xFF020F` (40 rates) → boot-ROM divisor table `0xC07026`
+  → DUART counter/timer = sample clock.
+* Filter index `0xFF0212` → boot-ROM table `0xC0704E`. The upper bits drive
+  **DUART output bits OP4–OP7** (the analog filter select lines). The low
+  3 bits go to the OTIS chip.
+* Changing the rate resets the filter from a third ROM table (`0xC06FFE`), via
+  `0xFF45A0` → overlay routine `0xFFE20E`.
+* The allowed cutoff range comes from parameter descriptors that aren't in
+  the OS (presumably in the boot ROM).
 
-**Where it goes:** CHOP is not real-time, so it can live in the **empty
-overlay slot** (overlay 3, 8 KB). That slot loads only when the command runs
-and costs no resident memory. SNAP and LINK need a small resident hook in the
-start/end edit path.
+**Step 1: probe (ready to test).** `tools/filterprobe.py` builds 8 OS disks.
+Each forces one OP4–OP6 pattern at `0xFFE2F6` (overlay 2, an 8-byte in-place
+change). Sample white noise or cymbals at a low rate with each disk and
+compare. This shows which pattern is the widest or a true bypass.
 
-**Still to find:** the wavesample allocator, the Copy Wavesample command,
-the key-range fields, and the command-page/display system.
+**Step 2: OUT.** Map a filter setting to the bypass pattern. Two candidates:
+* the top of the cutoff range means OUT (no UI change needed), or
+* a new OUT value past the top, which needs the range descriptor.
+
+Either way it's a few bytes in overlay 2 plus a small hook. Because it lives
+in the sampling overlay, it needs no resident space.
 
 ### 3. Sequencer: MPC-style swing and quantize
 
@@ -136,9 +134,9 @@ expanded unit.
 | M2b | Code location for resident hooks (sample RAM reservation or a freed routine) | |
 | M3 | Mute groups v1 (groups set at build time) on hardware | hook written |
 | M4 | Display/parameter system decoded; mute group editable from the panel | |
-| M5 | CHOP (equal slices) in overlay 3; SNAP and LINK | |
+| M5 | Filter probe on hardware → filter OUT | probe disks ready |
 | M6 | Quantize + swing at record time; TIMING CORRECT | |
-| M7 | Transient chop; mute group saved with the instrument | |
+| M7 | Mute group saved with the instrument | |
 
 ## Testing
 

@@ -1,7 +1,7 @@
 # Ensoniq EPS Custom OS
 
 A patch-based custom OS for the original Ensoniq EPS, built on OS 2.49. The
-first targets are **mute/choke groups** and **fast auto-chop**. See
+first targets are **mute groups per instrument**, an **anti-aliasing filter OUT** option for sampling, and **MPC-style swing/quantize**. See
 [docs/ROADMAP.md](docs/ROADMAP.md) for the full feature list and
 [docs/ANALYSIS.md](docs/ANALYSIS.md) for the reverse-engineering notes.
 
@@ -43,3 +43,12 @@ python3 tools/mkhook.py src/mutegroup.s build/eps_os_249.bin \
 ```
 
 The code-cave address is still open. See docs/ROADMAP.md.
+
+## Filter probe disks
+
+```sh
+python3 tools/filterprobe.py build/eps249os.ede build/filterprobe   # 8 test disks
+```
+
+Each disk forces one setting of the sampling filter-select lines. See
+docs/ROADMAP.md, feature 2.

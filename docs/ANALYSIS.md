@@ -122,6 +122,31 @@ in RAM at run time. Code branches into this block (`bsr 0xFF21AC`) where the
 file holds data, and calls `jsr 0x2080` into an all-zero area. The boot ROM
 probably fills it with vectors and trampolines, so it is **not** free space.
 
+### Sampling (overlay 2)
+
+Overlay 2 holds the sampling code along with the disk utilities.
+
+| Address | What |
+|---|---|
+| `0xFF020F` | Sample rate index (default 35). 40 rates, 6.25–52.1 kHz |
+| `0xFF0210` | Sampling parameter, ×2000 when used (default 0) |
+| `0xFF0211` | Flag (default 1). When 0, OP7 is driven the other way |
+| `0xFF0212` | Filter cutoff index (default 11) |
+| `0xC06FFE` (ROM) | 40-byte table: rate index → default filter index |
+| `0xC07026` (ROM) | 40-byte table: rate index → sample-clock divisor |
+| `0xC0704E` (ROM) | Filter table: index → OP4–OP7 select bits (upper nibble) + OTIS bits (low 3) |
+| `0xFFE20E` | Reset filter from the rate (called from `0xFF45A0` when the rate parameter changes) |
+| `0xFFE2BA` | Sample clock: divisor × 4 → DUART counter (`movep.w` to CTUR/CTLR at `0x28000D`) |
+| `0xFFE2D6` | Sampling setup: OP2 on, then OP4–OP7 from the filter entry (`0xFFE2F6`), written via the DUART set/reset output-port registers (`0x28001D/1F`) |
+| `0xFFE358` | Splits the filter entry. Low bits go to OTIS reg `0x12` on a range of voice pages |
+| `0xFFE3E6` | Input level meter: reads the input sample from OTIS `0x200018`, peak and average |
+| `0xFFFD14` | Sampling defaults |
+
+The resident analog-control scanner (`0xFFBE46`, 6 × 24-byte records at
+`0xFFC334`) also drives OP4–OP6 to select which front-panel analog input to
+read. Sampling disables that interrupt (IMR = `0x20`) before using the same
+lines for the filter, so the lines are probably shared or latched.
+
 ### Sequencer (partial)
 
 96 ticks per quarter note. `0xFF1602` = bar length (384 in 4/4).
