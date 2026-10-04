@@ -191,6 +191,10 @@ NO EDIT WS SELECTED; ENTER, CANCEL: COMMAND ABORTED). The Lua dumps
 instrument 1 before and after (`tools/instfile.py` reads it) and lists
 voice starts with their wavesample record. 16 checks.
 
+```sh
+python3 mame/test_tune_hw.py     # TUNE on the Layer page (mame/keys/tune.txt)
+```
+
 ## The mute group test (code area)
 
 ```sh

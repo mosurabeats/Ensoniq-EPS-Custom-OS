@@ -142,7 +142,7 @@ happens right there, a few milliseconds), anything odd on the display, any
 ERROR number. Saving and loading the sequence afterwards should be normal:
 the quantized notes are ordinary notes.
 
-## Next disk (`EPS249_NEXT`): HIT, loop undo, CHOP, SP sampling, more room
+## Next disk (`EPS249_NEXT`): HIT, TUNE, loop undo, CHOP, SP sampling, more room
 
 Everything on `EPS249_SWING`, plus:
 
@@ -160,6 +160,10 @@ Everything on `EPS249_SWING`, plus:
   instead (they stop sounding right away). One press per pass: a second
   press in the same pass does nothing. No message on the display. Undone
   notes are gone for good at the next loop wrap or at STOP + KEEP = NEW.
+* **TUNE** on the Layer page: Edit, **9 Layer**, ◄ twice (once is HIT):
+  `TUNE=+0`. ▲ / ▼ move the whole layer (a kit or a break: the whole
+  instrument) a semitone up / down, -16 to +15, by moving every
+  wavesample's ROOT KEY. Saved with the instrument (layer record +0x2F).
 * **CHOP** (automatic chopping): pick a wavesample in Edit (Edit, ► to
   the WS field, press a key it plays), then **8 Wave** and ◄ once from the
   first parameter: `CHOP=PRESS ENTER`. ENTER: `CHOP INTO 16 SLICES?`, ▲ / ▼
@@ -196,7 +200,9 @@ isn't kept; notes played after an undo are kept; the kept take has no
 undo marks left. `mame/test_chop_hw.py` (16 checks): the TR 8O8 kick chopped
 into 16: 16 wavesamples on C2 up, end to end over the kick, cuts on the
 nearest zero crossings, C#2 plays slice 2; NO EDIT WS SELECTED with WS=ALL;
-CANCEL makes nothing.
+CANCEL makes nothing. `mame/test_tune_hw.py` (6 checks): TUNE ▼ ▼ ▲ on the
+TR 8O8 shows +0, -1, -2, -1 and leaves every wavesample of layer 1 one
+semitone lower, layer 2 untouched.
 
 **Try:** the swing test above, then HIT: set FULL+1SHOT on a drum kit's
 layer and play soft and hard, short taps on long samples. Tell us whether
@@ -213,6 +219,8 @@ run the filter chip faster than the stock OS ever does, so tell us if
 they sound wrong (silence, a whine, distortion, much more noise) or the
 level meter behaves oddly. Check that other rates still pick their usual
 filter, and that normal sampling (e.g. 31.25 KHZ) sounds as before.
+TUNE: load a kit, TUNE -5 then +3: every pad lower then higher, each on
+its own key; save, reload, TUNE still shows the number.
 Then CHOP: sample (or load) a drum break into its own instrument, trim it
 to a bar or two, chop it into 16 and play the slices. Tell us whether the
 cuts sound clean and land on the hits, and whether SAVE INSTRUMENT and

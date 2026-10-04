@@ -1,8 +1,8 @@
 # Quick start: the custom EPS OS (`EPS249_NEXT`)
 
 Everything the stock EPS OS 2.49 does, plus mute groups, MPC-style swing
-for loop recording, loop undo, HIT (full level / one-shot), CHOP and SP
-sampling mode. For the original EPS (tested with boot ROM 2.40 and the 2x
+for loop recording, loop undo, HIT (full level / one-shot), TUNE, CHOP and
+SP sampling mode. For the original EPS (tested with boot ROM 2.40 and the 2x
 expander), from a Gotek or a floppy.
 
 ## Boot
@@ -27,6 +27,7 @@ end. **▲ / ▼** or the slider change a value.
 |---|---|---|
 | MUTE GROUP | Edit, **6 Amp**, ◄ once | the instrument (per wavesample) |
 | HIT | Edit, **9 Layer**, ◄ once | the instrument (per layer) |
+| TUNE | Edit, **9 Layer**, ◄ twice | the instrument (per layer) |
 | CHOP | Edit, **8 Wave**, ◄ once | (an action) |
 | SWING% / QUANTIZE | Edit, **Seq·Song**, ◄ once / twice | not saved: 1/16 and 50 at power-on |
 | Loop undo | **RECORD** while loop recording | |
@@ -160,28 +161,34 @@ and cymbals.
 nothing, like DC OFFSET ADJUSTMENT already did. It's a DAC trim for
 service technicians.)
 
-## Tuning a sample down (or up)
+## TUNE: pitch a whole instrument up or down
 
-The stock EPS already does this, on the **4 Pitch** page (Edit):
+Edit, **9 Layer**, ◄ twice (once is HIT): `TUNE=+0`.
 
-* **ROOT KEY** is the key that plays the sample at its original pitch.
-  Raise it by one and the sample plays **one semitone lower** on every
-  key; lower it to play higher. **FINE** tunes between semitones.
-* With **WS=ALL** selected, ROOT KEY moves every wavesample of the layer
-  by the same amount (a whole kit or a chopped break goes down together,
-  each keeping its place).
-* With one wavesample selected, it tunes just that one.
-* The old "sample the record at 45, play at 33" trick: raise ROOT KEY by
-  5 and FINE a little lower (45 to 33 1/3 is 5.2 semitones down).
+* **▲** = a semitone **up**, **▼** = a semitone **down**, from -16 to +15.
+  `TUNE=-5` plays everything 5 semitones lower than it was.
+* It moves **every wavesample of the layer** together, each keeping its
+  key: a kit or a chopped break is usually one layer, so that's the whole
+  instrument.
+* Saved with the instrument (the stock OS loads it fine).
+* The old "sample the record at 45, play it at 33" trick: TUNE -5 (45 to
+  33 1/3 rpm is 5.2 semitones; FINE on the 4 Pitch page does the rest).
+
+**Tuning just one sample:** the 4 Pitch page's **ROOT KEY** (stock EPS).
+It's the key that plays the sample at its original pitch, so it works
+backwards: raise ROOT KEY by one and the sample plays a semitone lower.
+**FINE** tunes between semitones. (TUNE works by moving every ROOT KEY of
+the layer for you; TUNE's number counts only its own steps.)
 
 ## Good to know
 
 * **Command mode and sampling are the stock OS** (apart from the
-  sampling filter: SP mode and the steps above 20 kHz). Our code steps aside while you're in Command
-  mode or sampling, and comes back when you leave. Sequence commands,
-  disk commands and sampling work as always.
+  sampling filter: SP mode and the steps above 20 kHz). Our code steps
+  aside while you're in Command mode or sampling, and comes back when you
+  leave. Sequence commands, disk commands and sampling work as always.
 * **Not saved:** QUANTIZE and SWING% (1/16 and 50 at power-on). Mute
-  groups, HIT, chopped slices and tuning are saved with the instrument.
+  groups, HIT, TUNE, chopped slices and tuning are saved with the
+  instrument.
 * **If you see an ERROR:** write down the number and what you just did,
   then power off and boot again.
 

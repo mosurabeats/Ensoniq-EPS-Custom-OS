@@ -136,8 +136,8 @@ pages:  .word   0xC110, 0x2562, 0x2570, 0x2570
         aw      seq_index+2*12
         .word   0xC0E8, 0x224A, 0x2256, 0x2256
         aw      layer_index
-        aw      layer_index+2*7
-        aw      layer_index+2*7
+        aw      layer_index+2*8
+        aw      layer_index+2*8
         .word   0xC0F2, 0x24FA, 0x2518, 0x251E
         aw      wave_index
         aw      wave_index+2*16
@@ -161,9 +161,9 @@ words:  .word   0x3468, 0x23DA
         .word   0xD064, 0x2110          | Edit mode's ENTER (src/swing/chop.s)
         aw      chop_enter
         .word   0xD066+2*CHOP_TYPE, 0x388A  | display of a parameter type no
-        aw      chop_show               | page uses: the CHOP entry
-        .word   0xD098+2*CHOP_TYPE, 0x3C10  | its edit (the arrows): nothing
-        aw      chop_edit
+        aw      x17_show                | page uses: CHOP and TUNE
+        .word   0xD098+2*CHOP_TYPE, 0x3C10  | its edit (the arrows)
+        aw      x17_edit
         .equ    NWORDS, 8
 
 | Sequencer hooks: address, stock bytes, ours (jsr abs.w).
@@ -189,12 +189,18 @@ hooks:  .word   0x6746                  | the loop wrap: jsr 0x6AD6.w
         aw      rec_hook
         .equ    NHOOKS, 5
 
-| The Layer page (Edit, 9 Layer): its ROM entries, then HIT: NORMAL, FULL
-| LEVEL (velocity 127), ONE-SHOT (no release at key-up for samples that
-| don't loop), both. Layer record +0x2E (src/swing/lvl.s).
+| The Layer page (Edit, 9 Layer): its ROM entries, then TUNE (src/swing/
+| tune.s) and HIT: NORMAL, FULL LEVEL (velocity 127), ONE-SHOT (no release
+| at key-up for samples that don't loop), both. Layer record +0x2E
+| (src/swing/lvl.s).
 layer_index:
         .word   0x22C8, 0x22D0, 0x22D8, 0x22E0, 0x22E8, 0x22F0, 0x22F8
+        aw      tune_desc
         aw      hit_desc
+tune_desc:
+        .byte   0x07, CHOP_TYPE         | parameter 7, our type
+        .word   0, L_TUNE               | (w2 unused), where (layer record)
+        aw      tune_label
 hit_desc:
         .byte   0x06, 0x0E              | parameter 6, a choice
         aw      hit_choices
@@ -253,6 +259,8 @@ mute_label:
         .asciz  "MUTE GROUP"
 hit_label:
         .asciz  "HIT"
+tune_label:
+        .asciz  "TUNE"
 quant_label:
         .asciz  "QUANTIZE"
 swing_label:
@@ -512,6 +520,7 @@ grids:  .word   48, 32, 24, 16, 12, 8, 6, 4
 
         .include "sq.s"
         .include "chop.s"
+        .include "tune.s"
 
         .balign 2
 chunks:                                 | (tools/mkswing.py appends them)

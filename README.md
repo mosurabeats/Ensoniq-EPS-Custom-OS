@@ -9,8 +9,9 @@ The EPS loads its OS from floppy at every boot, so trying a custom OS is safe.
 If something goes wrong, boot the stock disk.
 
 **Using it:** [docs/QUICKSTART.md](docs/QUICKSTART.md) is the quick start
-guide to every new function (mute groups, HIT, QUANTIZE/SWING%, loop undo,
-CHOP) on the current disk, `EPS249_NEXT`.
+guide to every new function (mute groups, HIT, TUNE, QUANTIZE/SWING%, loop
+undo, CHOP, the sampling filter and SP mode) on the current disk,
+`EPS249_NEXT`; `tools/mkguide.py` makes it a PDF.
 
 ## Tools
 
@@ -71,6 +72,7 @@ tools/fetch.sh sounds && python3 mame/test_resident.py    # the hardware build (
 python3 mame/test_swing_hw.py                            # the swing build: loop recording, swing, mute, commands
 python3 mame/test_undo_hw.py                             # the swing build: loop undo (RECORD while loop recording)
 python3 mame/test_chop_hw.py                             # the swing build: CHOP (Edit, 8 Wave)
+python3 mame/test_tune_hw.py                             # the swing build: TUNE (Edit, 9 Layer)
 python3 mame/test_mutegroups.py                          # mute groups with a real kit (code area)
 python3 mame/test_loop_record.py                         # loop recording, auto-keep
 python3 mame/test_swing.py                               # swing quantize of LOOPED takes

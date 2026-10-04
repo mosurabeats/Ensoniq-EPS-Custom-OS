@@ -983,6 +983,20 @@ wrap and commit hooks point at the flags; qbuf saves it.)
   so the source doesn't move, but other instruments may).
 MAME: `mame/test_chop_hw.py` (16 checks).
 
+**TUNE** (`src/swing/tune.s`). Edit, 9 Layer, before HIT: semitones for
+the whole layer, -16..+15, kept in the layer record's spare byte +0x2F
+(the low byte of the key-20 map slot; HIT is its high byte; zero in all
+factory layers, nothing reads it) in bits 7-3. ▲/▼ move every
+wavesample's ROOT KEY (+0xAA) of the layer the other way (walking the
+layer's chain: layer +6, then each record's +6), checking first that all
+stay 0-127. The wavesample record has no spare byte for it: the voice
+start reads ROOT KEY as a word (`0xFFB34E`, `0xFFB374`), so +0xAB is a
+fraction of a semitone. The entry shares CHOP's parameter type (0x17):
+the display and edit handlers pick by descriptor; after a change the
+edit goes to `0xFF44E0`, as the OS's own edits do (it redraws). With
+LYR=ALL the OS calls the edit once per layer. MAME:
+`mame/test_tune_hw.py`.
+
 **Tasks.** The wrap hook runs in the sequencer task (user stack around
 `0xFFCB56`, task 3, entry `0xFF583A`), the commit and ldr/ml in the UI task
 (`0xFFCA84`). Measured in MAME with a 50 ms busy loop in the wrap hook and
@@ -993,8 +1007,8 @@ be exchanged out from under a running hook.
 
 What we have now, all measured on 13-bit sample RAM:
 * **Window region** (`0xFFE400-0xFFFFDF`, swapped in outside Command mode):
-  7136 bytes, 3870 used (swing, loop undo, CHOP, patch/unpatch, page
-  tables).
+  7136 bytes, 4074 used (swing, loop undo, CHOP, TUNE, patch/unpatch,
+  page tables).
   Real-time hooks that only need to work in play/Edit mode (the sequencer
   ones) can live here. This is where the next features go.
 * **Resident** (always there, for hooks that must also work in Command
