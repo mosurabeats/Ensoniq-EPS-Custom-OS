@@ -8,6 +8,10 @@ first targets are **mute groups per instrument**, an **anti-aliasing filter OUT*
 The EPS loads its OS from floppy at every boot, so trying a custom OS is safe.
 If something goes wrong, boot the stock disk.
 
+**Using it:** [docs/QUICKSTART.md](docs/QUICKSTART.md) is the quick start
+guide to every new function (mute groups, HIT, QUANTIZE/SWING%, loop undo,
+CHOP) on the current disk, `EPS249_NEXT`.
+
 ## Tools
 
 ```sh
