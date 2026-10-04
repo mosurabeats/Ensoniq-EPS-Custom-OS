@@ -763,6 +763,43 @@ supervisor stack `0xFFC960`, the stack area `0xFFC994`, and the task table
   the final take without them (swing_kill) and clears the tags before
   the commit. MAME: `mame/test_undo.py`.
 
+### The overlay window during play and recording (room for swing)
+
+The swing code (2.3 KB in the emulator build) can't be resident: OS RAM is
+full and sample RAM can't run code. Measured and read to see whether it can
+borrow part of the overlay window instead:
+* **Overlays 0-2 fill the window** (8186 of 8192 bytes each; only the last
+  32 bytes are the same in all three), so there's no common free tail.
+  Overlay 4 is 3.4 KB, overlay 3 is empty.
+* **Overlay 0 is the one normally loaded**: the sequence and track
+  COMMANDS (CREATE/COPY/APPEND SEQUENCE, QUANTIZE/COPY/ERASE/SHIFT TRACK,
+  EVENT EDIT, ...: docs/COMMANDS.md) plus a little code used all the time
+  (the task at `0xFF583A` calls `0xFFE0B8`).
+* **What runs from the window** (MAME, ROM 2.40, a read tap over the
+  window by 256-byte page, `mame/keys/loop_record.txt` on the stock OS):
+  boot and LOAD read `0xFFE000-0xFFE3FF`; recording a new sequence, loop
+  recording, both KEEP prompts and playback read only
+  `0xFFE000-0xFFE0FF`. No overlay is loaded in any of it.
+* **Commands load their overlay through the dispatcher** (`0xFF2A76`):
+  the command record says which (flags bits 6-4 of its byte 12), and the
+  overlay loader `0xFF4E40` (D1 = overlay) is called only when
+  `0xFFC8D0` (current overlay) differs. The same dispatcher answers
+  "STOP SEQUENCER FIRST" while the sequencer runs (`0xFFBFD2` != 0).
+  The other loader calls: `0xFF5394` (same compare), `0xFF8A1A` (overlay
+  2, sampling) and `0xFF277A` (overlay 0, retried until it loads).
+* **QUANTIZE TRACK** (`0xFFED96`) re-records the whole track through the
+  event writer (`0xFF7388`, iterator `0xFF6792` with its handler table at
+  `0xFFEE68`) into the record buffers, with the sequencer stopped: not
+  usable at a loop wrap.
+
+So the plan for swing: while recording, our code takes the command part
+of overlay 0 (around `0xFFEB46-0xFFF4D9`, which nothing reads during play
+or recording), with `0xFFC8D0` set so that the next command reloads
+overlay 0. A hook in the loader puts overlay 0's bytes back from a copy
+in sample RAM (one byte per word, in the high byte, 13-bit safe) instead
+of reading the disk. Our code comes from the overlay-3 slot, loaded once
+at boot.
+
 ### Unused and unfinished bits
 
 Signs of features that were started or planned but aren't in OS 2.49:
