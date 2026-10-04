@@ -64,6 +64,7 @@ Whole-machine tests run in a patched MAME (docs/MAME.md):
 mame/build.sh                                   # once: MAME's EPS driver + our fixes
 mame/run.sh build/test/EPS249_MUTETEST.img      # boot a disk, print the display
 tools/fetch.sh sounds && python3 mame/test_resident.py    # the hardware build (13-bit sample RAM, ROM 2.40)
+python3 mame/test_swing_hw.py                            # the swing build: loop recording, swing, mute, commands
 python3 mame/test_mutegroups.py                          # mute groups with a real kit (code area)
 python3 mame/test_loop_record.py                         # loop recording, auto-keep
 python3 mame/test_swing.py                               # swing quantize of LOOPED takes
@@ -81,7 +82,13 @@ area below works only in MAME). `tools/mkmutetest.sh` builds the disk to
 try on a real EPS: OS 2.49 with mute groups and the MUTE GROUP parameter
 (6 Amp page), all in OS RAM (`tools/mkresident.py`, docs/ANALYSIS.md →
 Resident build). Writes `build/test/EPS249_MUTE.hfe` (Gotek) and `.img`
-(MAME). docs/HARDWARE_TESTS.md says what to try.
+(MAME). docs/HARDWARE_TESTS.md says what to try. It works on a real EPS.
+
+`tools/mkswingtest.sh` builds `EPS249_SWING`: mute groups plus MPC-style
+loop recording (QUANTIZE and SWING% on the Seq·Song page; the takes snap to
+the swung grid at every loop wrap, KEEP = OLD NEW as usual). The code
+borrows the sequence commands' part of the overlay window while they aren't
+in use (`tools/mkswing.py`, docs/ANALYSIS.md → Swing build).
 
 ## Code area and test disks (emulator only)
 

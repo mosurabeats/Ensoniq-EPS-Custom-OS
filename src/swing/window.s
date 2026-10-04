@@ -77,6 +77,12 @@ patch:  move.b  OV_CUR.w,d0
         move.w  2(a0),(a1)
         addq.l  #4,a0
         dbra    d1,4b
+        lea     hooks(pc),a0            | the sequencer hooks: ours
+        moveq   #NHOOKS-1,d1
+5:      movea.w (a0)+,a1
+        move.l  4(a0),(a1)              | (one move.l: never half a jsr)
+        addq.l  #8,a0
+        dbra    d1,5b
         rts
 
 | Ours goes out of the window next (src/swing/ldr.s exchanges it).
@@ -102,6 +108,12 @@ unpatch:
         move.w  (a0),(a1)
         addq.l  #4,a0
         dbra    d1,4b
+        lea     hooks(pc),a0            | the sequencer hooks: stock
+        moveq   #NHOOKS-1,d1
+5:      movea.w (a0)+,a1
+        move.l  (a0),(a1)
+        addq.l  #8,a0
+        dbra    d1,5b
         clr.b   FLAG.w
         move.b  DISP.w,OV_CUR.w
         rts
@@ -131,6 +143,17 @@ words:  .word   0x3468, 0x23DA
         .word   0x26A0, 0x23DA
         aw      seq_index
         .equ    NWORDS, 5
+
+| Sequencer hooks: address, stock bytes, ours (jsr abs.w).
+hooks:  .word   0x6746                  | the loop wrap: jsr 0x6AD6.w
+        .long   0x4EB86AD6
+        .word   0x4EB8
+        aw      wrap_hook
+        .word   0x6B7C                  | the commit (after KEEP): jsr 0x74F2.w
+        .long   0x4EB874F2
+        .word   0x4EB8
+        aw      stop_hook
+        .equ    NHOOKS, 2
 
 | The 6 Amp page: its ROM entries, then MUTE GROUP.
 amp_index:
@@ -164,5 +187,111 @@ quant_label:
         .asciz  "QUANTIZE"
 swing_label:
         .asciz  "SWING%"
+        .balign 2
+
+| ---------------------------------------------------------------- swing
+| QUANTIZE and SWING% (the Seq·Song page) apply when loop recording (RECORD
+| MODE = LOOPED), like an MPC's timing correct: at each loop wrap the take
+| just finished is quantized, so what you played lands on the swung grid
+| from the next pass on; at the commit (after KEEP = NEW) the final take.
+| docs/ANALYSIS.md -> Sequencer, src/looprec.s (the emulator build).
+        .equ    SEQ_BASE,   0x8104
+        .equ    BUF_A,      0x8114
+        .equ    BUF_B,      0x8118
+        .equ    WRITE_PTR,  0x811C
+        .equ    BUF_SIZE,   0x8128
+        .equ    OPEN_NOTES, 0x8134      | held notes being recorded
+        .equ    KEEP_NEW,   0x815E
+        .equ    REC_MODE,   0x815F
+        .equ    LOOPED,     2
+        .equ    TAKE_HDR,   28
+
+| At a loop wrap (0xFF6746, LOOPED wraps only), after 0x6AD6 finished the
+| take (gap to the loop end, END), before 0x6B2E stores its length. Not
+| while a key is held: the OS keeps pointers into the take for held notes'
+| durations (0xFF8134), which a re-encode would break; the next wrap gets
+| those notes.
+wrap_hook:
+        jsr     0x6AD6.w                | the call we replaced
+        movem.l d0-d7/a0-a6,-(sp)
+        bsr.s   settings
+        beq.s   9f
+        tst.w   OPEN_NOTES.w
+        bne.s   9f
+        move.l  WRITE_PTR.w,d3          | end of the finished take
+        move.l  BUF_A.w,d4
+        cmp.l   BUF_B.w,d3
+        bcs.s   1f
+        move.l  BUF_B.w,d4              | it's in buffer B
+1:      bsr.s   qbuf
+9:      movem.l (sp)+,d0-d7/a0-a6
+        rts
+
+| At the commit (0xFF6B7C), after 0x74F2 closed held notes: a LOOPED take
+| kept with NEW (it's in buffer A). The OS's "tst.b 0x815E" follows.
+stop_hook:
+        jsr     0x74F2.w                | the call we replaced
+        tst.b   KEEP_NEW.w
+        beq.s   9f
+        cmpi.b  #LOOPED,REC_MODE.w
+        bne.s   9f
+        movem.l d0-d7/a0-a6,-(sp)
+        bsr.s   settings
+        beq.s   8f
+        move.l  WRITE_PTR.w,d3
+        move.l  BUF_A.w,d4
+        bsr.s   qbuf
+8:      movem.l (sp)+,d0-d7/a0-a6
+9:      rts
+
+| Quantize the take in the buffer at offset d4 (end offset d3), then move
+| the write pointer to its new end. d1/d2: grid, offset.
+qbuf:   movea.l SEQ_BASE.w,a2
+        lea     TAKE_HDR(a2,d4.l),a0
+        lea     0(a2,d3.l),a1
+        lea     0(a2,d4.l),a3
+        adda.l  BUF_SIZE.w,a3
+        move.l  a2,-(sp)
+        bsr     sq
+        move.l  (sp)+,d0
+        suba.l  d0,a1
+        move.l  a1,WRITE_PTR.w
+        rts
+
+| QUANTIZE (0-7: 1/4 .. 1/32T at 48 ticks per quarter, 8: OFF) and SWING%
+| -> d1 = grid, d2 = swing offset; Z when off. Swing (MPC: the second 8th
+| or 16th of each pair at SWING% of the pair, tools/swing.py offset()) on
+| the 1/8 and 1/16 grids, from 51%.
+settings:
+        moveq   #0,d1
+        moveq   #0,d2
+        moveq   #0,d0
+        move.b  QUANT.w,d0
+        cmpi.w  #8,d0
+        bcc.s   9f
+        add.w   d0,d0
+        move.w  grids(pc,d0.w),d1
+        cmpi.w  #24,d1
+        beq.s   1f
+        cmpi.w  #12,d1
+        bne.s   9f
+1:      move.b  SWING.w,d0
+        cmpi.w  #50,d0
+        bls.s   9f                      | straight
+        cmpi.w  #75,d0
+        bls.s   2f
+        moveq   #75,d0
+2:      mulu.w  d1,d0
+        add.l   d0,d0                   | 2 * grid * pct
+        addi.l  #50,d0
+        divu.w  #100,d0                 | rounded
+        sub.w   d1,d0
+        move.w  d0,d2
+9:      tst.w   d1
+        rts
+grids:  .word   48, 32, 24, 16, 12, 8, 6, 4
+
+        .include "sq.s"
+
         .balign 2
 chunks:                                 | (tools/mkswing.py appends them)

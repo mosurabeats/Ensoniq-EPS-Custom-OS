@@ -91,6 +91,57 @@ down) with a short one. Listen for:
 
 **Tell us** which one sounds right. That becomes the default.
 
+## Swing test (`EPS249_SWING`): MPC-style loop recording
+
+`EPS249_SWING` has mute groups (as `EPS249_MUTE`, 24 ms cut) plus
+**QUANTIZE** and **SWING%** for loop recording, like an MPC's timing
+correct: when you loop record, what you play snaps to the (swung) grid from
+the next pass on. The KEEP = OLD NEW prompt stays as it is. Build it with
+`tools/mkswingtest.sh`. Just the OS: add your own samples.
+
+In MAME (13-bit sample RAM, boot ROM 2.40, `mame/test_swing_hw.py`): loop
+takes snap to 1/16 at every wrap, SWING% 58 puts the off 16ths 2 ticks
+late, KEEP = NEW keeps the quantized take, mute groups cut, and the
+sequence commands and sampling still work.
+
+How it fits: the new code is too big for the EPS's own memory, so it
+borrows the part of the OS that holds the sequence commands (COPY TRACK,
+QUANTIZE TRACK and so on) while you aren't using them, and keeps that part
+in a corner of sample memory (5 KB) until you are. Nothing is loaded from
+disk for that.
+
+**1. Boot.** It takes a second or two longer than stock (it reads a bit
+more of the OS from the disk). If it shows an ERROR, write down the number.
+
+**2. Mute groups** work as before (6 Amp page, ◄ once: MUTE GROUP).
+
+**3. The settings.** Edit, then **Seq·Song**. From the first parameter
+press **◄** once: `SWING%=50`; again: `QUANTIZE=1/16`. QUANTIZE goes 1/4,
+1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T, OFF (OFF = the stock EPS).
+SWING% is 50 (straight) to 75, MPC style, and only swings the 1/8 and 1/16
+grids. Both start at 1/16 and 50 at power-on (not saved yet).
+
+**4. Loop record.** Make a 1- or 2-bar sequence, set RECORD MODE = LOOPED
+(same page), and loop record (Record + Play) a beat: play some hits a
+little early or late. From the next time around they play on the grid.
+Try SWING% 54-62 with 1/16 hats: the off 16ths come in late, the MPC feel.
+A downbeat played just before the loop point moves to the start.
+
+**5. A key held over the loop point:** those notes snap one pass later
+(they're still being recorded at that wrap). That's expected.
+
+**6. Stop.** The KEEP = OLD NEW prompt comes up as usual. NEW keeps the
+take, and the notes of the last, unfinished pass snap too. Play it back.
+
+**7. Commands and sampling:** a sequence command (Command, Seq·Song, e.g.
+COPY TRACK) and sampling should work as on the stock EPS; going back to
+Edit, QUANTIZE and SWING% are there again.
+
+**Tell us:** does it feel right, any hiccup at the loop point (the snapping
+happens right there, a few milliseconds), anything odd on the display, any
+ERROR number. Saving and loading the sequence afterwards should be normal:
+the quantized notes are ordinary notes.
+
 ## Test 1: code area + mute groups (`EPS249_MUTETEST`)
 
 > **Doesn't run on hardware** (ERROR 131: code in sample RAM). Kept for

@@ -792,13 +792,63 @@ borrow part of the overlay window instead:
   `0xFFEE68`) into the record buffers, with the sequencer stopped: not
   usable at a loop wrap.
 
-So the plan for swing: while recording, our code takes the command part
-of overlay 0 (around `0xFFEB46-0xFFF4D9`, which nothing reads during play
-or recording), with `0xFFC8D0` set so that the next command reloads
-overlay 0. A hook in the loader puts overlay 0's bytes back from a copy
-in sample RAM (one byte per word, in the high byte, 13-bit safe) instead
-of reading the disk. Our code comes from the overlay-3 slot, loaded once
-at boot.
+### Swing build (hardware)
+
+`tools/mkswing.py` (`tools/mkswingtest.sh`: `EPS249_SWING`). Our code
+borrows the region `0xFFEB48-0xFFF4B7` of the window (2416 bytes, inside
+overlay 0's track commands, clear of all overlay-0 code the resident OS
+calls directly) whenever no command is running, and parks what it
+displaced in a 5 KB store at the top of sample RAM (one byte per word, in
+the high byte).
+
+| Piece | Where | What |
+|---|---|---|
+| early | `0xFFC994` (boot stage) | the trampoline `0xFF832E` to the ROM's sample sizing comes here: takes the store off the heap (`0xFF166A`), redoes the ROM bookkeeping |
+| late | boot stage | instead of the boot's last `jsr 0x1EF4`: exchange (overlay 0's region bytes -> store), load overlay 3 with the OS's loader, check "SWG1", run install |
+| overlay-3 slot | OS file | overlay 0 with our window image in the region |
+| install | window | resident chunks below, then patch |
+| mute | `0xFF1720` | as in `EPS249_MUTE`, hook `0xFFAF92` |
+| ldr | `0xFF4E20-0xFF4E3F` | the loader's four callers call it; if ours is in: unpatch, exchange, and skip the disk if the overlay asked for is the one we displaced; then falls into the loader `0xFF4E40` |
+| ml | `0xFF2990` (hook `0xFF1774`) | top of the UI loop: if ours is out and the mode isn't Command (`0xFF160A` != 1), exchange and patch |
+| swapx | `0xFF86E8` | the exchange loop |
+| vars | `0xFF8174-0xFF8177` | QUANTIZE, SWING%, in-flag, displaced overlay |
+
+patch/unpatch (window code) switch: the 6 Amp and Seq·Song page records to
+our index tables (MUTE GROUP; QUANTIZE, SWING%), five words in the OS's
+page code that would otherwise reset the Seq·Song record (`0xFF3468`,
+`0xFF346E`, `0xFF3472`, `0xFF3476`, `0xFF26A0`: when the Edit pages switch
+between the sequence and song tables the OS rewrites the record unless
+"first" is `0x23DA`), and the sequencer hooks (one `move.l` each). While
+ours is in, `0xFFC8D0` = 3, so any overlay request goes through ldr.
+
+QUANTIZE uses the ROM's own labels (`0xC04778`: 1/4 .. 1/32T, OFF; our
+choice table points there). Grids at 48 ticks per quarter: 48, 32, 24, 16,
+12, 8, 6, 4; SWING% (51-75, 1/8 and 1/16 only) gives the offset
+round(2 x grid x % / 100) - grid on odd grid lines.
+
+**Hooks.** `0xFF6746` (`jsr 0x6AD6` at a LOOPED wrap, after the take is
+finished): the finished take is quantized, unless a key is held (the OS
+keeps pointers into the take for held notes, `0xFF8134`; they snap at the
+next wrap). `0xFF6B7C` (`jsr 0x74F2`, the commit after KEEP): a LOOPED
+take kept with NEW is quantized (buffer A). The KEEP prompt is untouched.
+
+**The quantizer** (`src/swing/sq.s`, same result as
+`tools/seqstream.py quantize_take`, `tests/test_sq.py`): a note moves less
+than one grid step back, so it streams: events wait in a 32-entry buffer
+sorted by new time until the scan is a grid past them; notes that wrap
+(land on or after END) are found in a first pass and go out after the
+events at the floor. The output goes after the take (free sequencer memory,
+as the old code's scratch), then is copied back. Only event words are
+written, and the event format keeps bits 3-0 at 0, so it's 13-bit safe.
+Sequence memory starts at `0x580000` (sample RAM); recorded takes are the
+same word for word with 13- and 16-bit sample RAM in MAME, and the note's
+instrument isn't in bits 3-0 (all 0): a take is one track.
+
+**Tasks.** The wrap hook runs in the sequencer task (user stack around
+`0xFFCB56`, task 3, entry `0xFF583A`), the commit and ldr/ml in the UI task
+(`0xFFCA84`). Measured in MAME with a 50 ms busy loop in the wrap hook and
+panel buttons every 40 ms: the UI loop never ran inside it, so ours can't
+be exchanged out from under a running hook.
 
 ### Unused and unfinished bits
 

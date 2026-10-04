@@ -156,6 +156,20 @@ checks.
 `WAV=out.wav mame/run.sh ...` records MAME's audio, but the EPS driver's
 output is silent for now: judge sound (clicks, fades) on hardware.
 
+## The swing build test (hardware build)
+
+```sh
+python3 mame/test_swing_hw.py    # a few minutes
+```
+
+`EPS249_SWING` (`tools/mkswing.py`) with the TR 8O8 kit, 13-bit sample
+RAM, boot ROM 2.40. Loop recording (`mame/keys/loop_record.txt`, 6 s later:
+this OS boots slower) with QUANTIZE 1/16: the take at each wrap and the one
+kept with KEEP = NEW (ENTER at the prompt) are on the grid; again with
+SWING% 58 set on the Seq·Song page: odd 16ths 2 ticks late; mute groups from
+the 6 Amp page; Command, CREATE NEW SEQUENCE (overlay 0 back from the
+store, no disk read), then QUANTIZE on the page again. 12 checks.
+
 ## The mute group test (code area)
 
 ```sh
