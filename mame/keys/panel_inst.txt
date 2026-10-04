@@ -1,0 +1,27 @@
+# HIT (FULL LEVEL / ONE-SHOT) set on the Layer page (the swing build,
+# layer record +0x2E; times for its slower boot): load TR 8O8, Edit, 9
+# Layer, ◄ = HIT (the last entry), ▲ x3 = FULL+1SHOT. Then a soft
+# (velocity 0x20) tap on D2, the snare (a no-loop sample), released after
+# 100 ms. Buttons: docs/MAME.md (Edit 5, 9 Layer 37, ◄ 16, ▲ 10).
+13.5 8f 00    # Load
+13.65 0f 00
+14.5 a3 00    # Enter·Yes
+14.65 23 00
+15.5 82 00    # instrument 1: load TR 8O8
+15.65 02 00
+32.0 82 00    # select instrument 1
+32.15 02 00
+33.0 85 00    # Edit
+33.15 05 00
+33.6 a5 00    # 9 Layer
+33.75 25 00
+34.2 90 00    # ◄: HIT
+34.35 10 00
+34.8 8a 00    # ▲: FULL LEVEL
+34.95 0a 00
+35.4 8a 00    # ▲: ONE-SHOT
+35.55 0a 00
+36.0 8a 00    # ▲: FULL+1SHOT
+36.15 0a 00
+38.0 82 20    # D2, soft
+38.1 02 40

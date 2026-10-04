@@ -25,6 +25,7 @@
 
         .include "common.inc"
         .equ    WS_GROUP,   0x11E
+        .equ    L_HIT,      0x2E        | layer record (src/swing/lvl.s)
         .equ    ROM_QLABELS, 0xC04778   | "1/4  ", "1/4T ", ... "1/32T", "OFF  " (ROM)
 
 | Address words of our own tables: their low word (abs.w, sign-extended
@@ -36,7 +37,7 @@
         .endm
 
         .text
-        .globl  wmagic, install, patch, unpatch, chunks
+        .globl  wmagic, install, patch, unpatch, out, chunks
 wmagic: .ascii  "SWG1"
 install:
         lea     chunks(pc),a0           | resident code and fixed hooks
@@ -64,12 +65,12 @@ patch:  move.b  OV_CUR.w,d0
 2:      movea.w (a0)+,a1                | page record
         move.w  4(a1),d0                | current entry
         sub.w   (a0),d0                 | - ROM first
-        add.w   4(a0),d0                | + our first
+        add.w   6(a0),d0                | + our first
         move.w  d0,4(a1)
-        move.w  4(a0),(a1)              | first
-        move.w  6(a0),2(a1)             | last
-        move.w  6(a0),8(a1)             | end of the search range
-        addq.l  #8,a0
+        move.w  6(a0),(a1)              | first
+        move.w  8(a0),2(a1)             | last
+        move.w  10(a0),8(a1)            | end of the search range
+        lea     12(a0),a0
         dbra    d1,2b
         lea     words(pc),a0            | the OS's own page code: ours
         moveq   #NWORDS-1,d1
@@ -91,7 +92,7 @@ unpatch:
         moveq   #NPAGES-1,d1
 2:      movea.w (a0)+,a1
         move.w  4(a1),d0
-        sub.w   4(a0),d0                | - our first
+        sub.w   6(a0),d0                | - our first
         add.w   (a0),d0                 | + ROM first
         cmp.w   2(a0),d0
         bls.s   3f
@@ -99,8 +100,8 @@ unpatch:
 3:      move.w  d0,4(a1)
         move.w  (a0),(a1)
         move.w  2(a0),2(a1)
-        move.w  2(a0),8(a1)
-        addq.l  #8,a0
+        move.w  4(a0),8(a1)
+        lea     12(a0),a0
         dbra    d1,2b
         lea     words(pc),a0            | the OS's own page code: the ROM's
         moveq   #NWORDS-1,d1
@@ -118,15 +119,26 @@ unpatch:
         move.b  DISP.w,OV_CUR.w
         rts
 
-| Page record, ROM first and last entry, our first and last entry.
+| Command mode (src/swing/ml.s): unpatch, then the exchange puts back what
+| we displaced (a jump: it overwrites this code).
+out:    bsr     unpatch
+        jmp     SWAPX.w
+
+| Page record; ROM first, last and search-range end; ours.
         .balign 2
-pages:  .word   0xC110, 0x2562, 0x2570
+pages:  .word   0xC110, 0x2562, 0x2570, 0x2570
         aw      amp_index
         aw      amp_index+2*8
-        .word   0xC0B6, 0x23DA, 0x23EE
+        aw      amp_index+2*8
+        .word   0xC0B6, 0x23DA, 0x23EE, 0x23EE
         aw      seq_index
         aw      seq_index+2*12
-        .equ    NPAGES, 2
+        aw      seq_index+2*12
+        .word   0xC0E8, 0x224A, 0x2256, 0x2256
+        aw      layer_index
+        aw      layer_index+2*7
+        aw      layer_index+2*7
+        .equ    NPAGES, 3
 
 | Words in OS code that name the Seq·Song page's entries: when the Edit
 | pages switch between the sequence and song tables (0xFF3456), the OS
@@ -154,6 +166,27 @@ hooks:  .word   0x6746                  | the loop wrap: jsr 0x6AD6.w
         .word   0x4EB8
         aw      stop_hook
         .equ    NHOOKS, 2
+
+| The Layer page (Edit, 9 Layer): its ROM entries, then HIT: NORMAL, FULL
+| LEVEL (velocity 127), ONE-SHOT (no release at key-up for samples that
+| don't loop), both. Layer record +0x2E (src/swing/lvl.s).
+layer_index:
+        .word   0x22C8, 0x22D0, 0x22D8, 0x22E0, 0x22E8, 0x22F0, 0x22F8
+        aw      hit_desc
+hit_desc:
+        .byte   0x06, 0x0E              | parameter 6, a choice
+        aw      hit_choices
+        .word   L_HIT                   | where (layer record)
+        aw      hit_label
+hit_choices:
+        .long   hit_labels
+        .byte   10, 4                   | width, count
+hit_labels:
+        .asciz  "NORMAL    "
+        .asciz  "FULL LEVEL"
+        .asciz  "ONE-SHOT  "
+        .asciz  "FULL+1SHOT"
+        .balign 2
 
 | The 6 Amp page: its ROM entries, then MUTE GROUP.
 amp_index:
@@ -183,6 +216,8 @@ quant_choices:
         .byte   5, 9                    | width, count
 mute_label:
         .asciz  "MUTE GROUP"
+hit_label:
+        .asciz  "HIT"
 quant_label:
         .asciz  "QUANTIZE"
 swing_label:

@@ -84,9 +84,11 @@ try on a real EPS: OS 2.49 with mute groups and the MUTE GROUP parameter
 Resident build). Writes `build/test/EPS249_MUTE.hfe` (Gotek) and `.img`
 (MAME). docs/HARDWARE_TESTS.md says what to try. It works on a real EPS.
 
-`tools/mkswingtest.sh` builds `EPS249_SWING`: mute groups plus MPC-style
-loop recording (QUANTIZE and SWING% on the Seq·Song page; the takes snap to
-the swung grid at every loop wrap, KEEP = OLD NEW as usual). The code
+`tools/mkswingtest.sh` builds `EPS249_NEXT`: mute groups, MPC-style loop
+recording (QUANTIZE and SWING% on the Seq·Song page; the takes snap to the
+swung grid at every loop wrap, KEEP = OLD NEW as usual) and HIT (FULL LEVEL
+/ ONE-SHOT on the Layer page). Its first hardware test was `EPS249_SWING`
+(commit dfea704). The code
 borrows the sequence commands' part of the overlay window while they aren't
 in use (`tools/mkswing.py`, docs/ANALYSIS.md → Swing build).
 

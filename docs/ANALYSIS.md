@@ -794,12 +794,20 @@ borrow part of the overlay window instead:
 
 ### Swing build (hardware)
 
-`tools/mkswing.py` (`tools/mkswingtest.sh`: `EPS249_SWING`). Our code
-borrows the region `0xFFEB48-0xFFF4B7` of the window (2416 bytes, inside
-overlay 0's track commands, clear of all overlay-0 code the resident OS
-calls directly) whenever no command is running, and parks what it
-displaced in a 5 KB store at the top of sample RAM (one byte per word, in
-the high byte).
+`tools/mkswing.py` (`tools/mkswingtest.sh`). Our code borrows the region
+from `0xFFE400` of the window (as long as the image, up to `0xFFFFDF`; the
+first 1 KB is read at boot and `0xFFE000-0xFFE0FF` by the sequencer, the
+last 32 bytes are common to all overlays), and parks what it displaced in
+a store at the top of sample RAM (one byte per word, in the high byte).
+It's in the window in play and Edit mode (`0xFF160A` = 0 or 2) and out in
+Command mode (1, which is also where sampling runs): the main-loop hook
+swaps both ways, the loader hook takes it out when the OS asks for an
+overlay. Outside Command mode the stock OS can't rely on any overlay's code
+(after sampling or an instrument command another overlay stays in the
+window while you play and edit), and measured in MAME nothing reads the
+window past `0xFFE3FF` then. (The first hardware test, `EPS249_SWING`,
+commit dfea704, borrowed only `0xFFEB48-0xFFF4B7` and stayed in during
+Command mode until a command asked for its overlay.)
 
 | Piece | Where | What |
 |---|---|---|
@@ -809,7 +817,8 @@ the high byte).
 | install | window | resident chunks below, then patch |
 | mute | `0xFF1720` | as in `EPS249_MUTE`, hook `0xFFAF92` |
 | ldr | `0xFF4E20-0xFF4E3F` | the loader's four callers call it; if ours is in: unpatch, exchange, and skip the disk if the overlay asked for is the one we displaced; then falls into the loader `0xFF4E40` |
-| ml | `0xFF2990` (hook `0xFF1774`) | top of the UI loop: if ours is out and the mode isn't Command (`0xFF160A` != 1), exchange and patch |
+| ml | `0xFF2990` (hook `0xFF1774`) | top of the UI loop: ours should be in unless the mode is Command (`0xFF160A` = 1): exchange and patch, or `out` (window: unpatch, then exchange) |
+| HIT | `0xFF874C` (hook `0xFFB252`), `0xFF4EA8` + `0xFF1764` (hook `0xFFAE54`) | FULL LEVEL / ONE-SHOT, below |
 | swapx | `0xFF86E8` | the exchange loop |
 | vars | `0xFF8174-0xFF8177` | QUANTIZE, SWING%, in-flag, displaced overlay |
 
@@ -843,6 +852,24 @@ written, and the event format keeps bits 3-0 at 0, so it's 13-bit safe.
 Sequence memory starts at `0x580000` (sample RAM); recorded takes are the
 same word for word with 13- and 16-bit sample RAM in MAME, and the note's
 instrument isn't in bits 3-0 (all 0): a take is one track.
+
+**HIT** (FULL LEVEL / ONE-SHOT). Storage had to be a high byte nothing
+uses: no wavesample word is free besides `0x11E` (78 factory wavesamples:
+the always-zero high bytes are parameters that default to 0, sample
+address bytes, or `+0x24`, which the OS writes during sampling); the
+instrument header's high bytes `+0x34-0x62` are free (zero in all factory
+instruments, never touched in MAME), but the Instrument edit page
+(`0xFFC0DE`) only comes up when the edit selection has no layer (no panel
+button selects it; `0xFF2F6E`). So: one choice on the Layer page, layer
+record `+0x2E`, the key-map slot of key 20 (the map is `+6 + 2 x key` for
+keys 21-108; layer records are `0xE0` bytes; no code reads `+0x2E`).
+Bit 0 FULL LEVEL, bit 1 ONE-SHOT. At the voice start (`0xFFB252`, `a6` =
+the layer, `a3` = the wavesample on both paths) FULL LEVEL makes the
+velocity 127 and the ONE-SHOT bit is copied into the wavesample's `+0x11F`
+bit 3 (a low byte, but bit 3 exists in 13-bit RAM). At key-up the stock
+test of the sustain pedal (`0xFFAE54`, `tst.b 20(a2)`) also says "hold"
+for a voice whose wavesample has that bit and doesn't loop (MODE `+0xEE`
+0 or 1): it plays to its end. Looping samples release as usual.
 
 **Tasks.** The wrap hook runs in the sequencer task (user stack around
 `0xFFCB56`, task 3, entry `0xFF583A`), the commit and ldr/ml in the UI task

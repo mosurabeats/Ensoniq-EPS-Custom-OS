@@ -11,6 +11,9 @@ One disk: OS 2.49 with the swing patch + the TR 8O8 kit. Runs:
   the first parameter, ▲ 8 times): the odd 16ths are 2 ticks late;
 * mute groups from the 6 Amp page (mame/keys/panel_mute.txt, 3 s later):
   E2 cuts C2, G2 cuts E2;
+* HIT = FULL+1SHOT on the Layer page (mame/keys/panel_inst.txt), a soft
+  tap on the snare: velocity 127, not released at key-up; without the ▲
+  presses (NORMAL): as played, released;
 * Command mode: CREATE NEW SEQUENCE (overlay 0 comes back from the store,
   no disk read), then QUANTIZE on the Seq·Song page again.
 Needs what mame/test_mutegroups.py needs, and build/bootrom/r240.
@@ -164,6 +167,48 @@ def run_cmd(disk):
     return T.sh(os.path.join(T.ROOT, "mame", "run.sh"), disk, "39", lua, env=env)
 
 
+VOICE_LUA = """
+local prog = manager.machine.devices[":maincpu"].spaces["program"]
+local last = ""
+emu.register_periodic(function()
+  local t = manager.machine.time:as_double()
+  if t < 37.9 or t > 39.5 then return end
+  local s = ""
+  for _, sentinel in ipairs({0xFF16E4, 0xFF16DC}) do
+    local v, n = prog:read_u16(sentinel), 0
+    while v ~= (sentinel & 0xFFFF) and n < 24 do
+      local a = 0xFF0000 + v
+      s = s .. string.format(" [k%d v%d s%d]", prog:read_u8(a + 4), prog:read_u8(a + 8), prog:read_u8(a + 12))
+      v = prog:read_u16(a); n = n + 1
+    end
+  end
+  if s ~= last then print(string.format("VOICE %.3f%s", t, s)); last = s end
+end)
+local done = false
+emu.register_periodic(function()
+  if done or manager.machine.time:as_double() < 39.6 then return end
+  done = true
+  local rec = prog:read_u16(0xFFDF70)
+  local data = prog:read_u32(0xFF0000 + prog:read_u16(0xFF0000 + rec))
+  local a = data + 0x64                 -- layer 0's offset, packed as ROM 0xC08D1A reads it
+  local off = (((prog:read_u8(a + 3) >> 4) << 16) | (prog:read_u8(a) << 8) | prog:read_u8(a + 2)) << 4
+  print(string.format("INSTFLAGS %02x", prog:read_u8(data + off + 0x2E)))
+end)
+"""
+
+
+def run_voice(disk, name, keys):
+    lua = os.path.join(T.OUT, name + ".lua")
+    open(lua, "w").write(VOICE_LUA)
+    env = dict(os.environ, KEYS=keys, RUN=os.path.join(T.OUT, "run_" + name), BOOTROM=ROM,
+               EPS_SAMPLERAM16="0")
+    out = T.sh(os.path.join(T.ROOT, "mame", "run.sh"), disk, "40", lua, env=env)
+    frames = [(float(l.split()[1]), [tuple(map(int, v)) for v in re.findall(r"\[k(\d+) v(\d+) s(\d+)\]", l)])
+              for l in out.splitlines() if l.startswith("VOICE ")]
+    flags = next((l.split()[1:] for l in out.splitlines() if l.startswith("INSTFLAGS")), None)
+    return out, frames, flags
+
+
 def on_grid(notes, swing=0):
     """Every note on the 1/16 grid (tick 1: the take's floor, a downbeat),
     odd 16ths `swing` ticks late."""
@@ -173,7 +218,12 @@ def on_grid(notes, swing=0):
 def main():
     os.makedirs(T.OUT, exist_ok=True)
     disk = make_disk()
-    with ThreadPoolExecutor(4) as ex:
+    inst_keys = os.path.join(T.ROOT, "mame", "keys", "panel_inst.txt")
+    inst_off = os.path.join(T.OUT, "swinghw_inst_off.txt")
+    open(inst_off, "w").write("".join(l for l in open(inst_keys) if " 8a 00" not in l and " 0a 00" not in l))
+    with ThreadPoolExecutor(6) as ex:
+        f_von = ex.submit(run_voice, disk, "swinghw_inst", inst_keys)
+        f_voff = ex.submit(run_voice, disk, "swinghw_inst_off", inst_off)
         f_straight = ex.submit(run_loop, disk, "swinghw_loop", [])
         f_swing = ex.submit(run_loop, disk, "swinghw_loop58", SWING58)
         f_mute = ex.submit(run_mute, disk)
@@ -181,6 +231,7 @@ def main():
         (out, takes), (s_out, s_takes) = f_straight.result(), f_swing.result()
         m_out, frames = f_mute.result()
         c_out = f_cmd.result()
+        (v_out, v_frames, v_flags), (_, o_frames, o_flags) = f_von.result(), f_voff.result()
     ok = []
 
     def check(what, cond):
@@ -204,6 +255,18 @@ def main():
     check("mute groups: MUTE GROUP on the 6 Amp page", "MUTE GROUP=" in m_out)
     check("mute groups: E2 cuts C2, G2 cuts E2, G2 rings",
           killed(C2) and killed(E2) and not killed(G2))
+    D2 = 38
+    vel = lambda fr: {v for _, vs in fr for k, v, _ in vs if k == D2}  # noqa: E731
+    released = lambda fr: any(s == 6 for _, vs in fr for k, _, s in vs if k == D2)  # noqa: E731
+    check("HIT on the Layer page, set to FULL+1SHOT", "HIT=" in v_out and "FULL+1SHOT" in v_out)
+    check("stored in the layer record (+0x2E = 3)", v_flags == ["03"])
+    check("FULL LEVEL ON: a soft hit plays at velocity 127", vel(v_frames) == {127})
+    check("ONE-SHOT ON: key-up doesn't release the snare (it plays out)",
+          bool(v_frames) and not released(v_frames))
+    check("both OFF: the velocity as played (32), released at key-up",
+          vel(o_frames) == {32} and released(o_frames) and o_flags == ["00"])
+    print("   voice on: ", v_frames[:6])
+    print("   voice off:", o_frames[:6])
     check("Command: CREATE NEW SEQUENCE runs", "NEW NAME=" in c_out)
     check("Command: overlay 0 back without a disk read", "DISKLOAD 0" not in c_out)
     check("back in Edit: QUANTIZE on the Seq·Song page again", "QUANTIZE=" in c_out)

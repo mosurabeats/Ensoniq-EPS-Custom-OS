@@ -27,7 +27,10 @@ import mkresident  # noqa: E402
 
 SRC = os.path.join(os.path.dirname(__file__), "..", "src")
 SW = os.path.join(SRC, "swing")
-REGION, LEN = 0xFFEB48, 0x970          # inside overlay 0's track commands
+REGION = 0xFFE400                      # our part of the window: from here,
+REGION_END = 0xFFFFE0                   # as long as the image (the window's first
+                                        # 1 KB is used at boot and by the sequencer;
+                                        # the last 32 bytes are the same in all overlays)
 OVERLAY_WINDOW, OVERLAY_SIZE = 0xFFE000, 0x2000
 CARRIER, CARRIER_END = 0xFFC994, 0xFFCA30   # the boot's init stack reaches 0xFFCA3E
 MAGIC = 0x53574721                      # "SWG!" (src/swing/late.s)
@@ -37,6 +40,9 @@ QLABELS = ["1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T", "OFF"
 MUTE_AT, MUTE_END = 0xFF1720, 0xFF1770  # the boot sequence's jsr list
 ML_AT, ML_END = 0xFF2990, 0xFF29BA      # boot routine 0xFF298E (4-aligned for ld)
 SWAPX_AT, SWAPX_END = 0xFF86E8, 0xFF870A  # boot routine 0xFF86E6 (0xFF870A is used later)
+LVL_AT, LVL_END = 0xFF874C, 0xFF8766    # boot routine 0xFF874C
+OS1_AT, OS1_END = 0xFF4EA8, 0xFF4EC2    # boot routine 0xFF4EA6
+OS2_AT, OS2_END = 0xFF1764, 0xFF1774    # after the mute code: the jsr at 0xFF1770 runs once
 LDR_END = 0xFF4E40                      # boot routine 0xFF4E20, right before the loader
 LDR_MIN = 0xFF4E20
 
@@ -47,6 +53,8 @@ STOCK = {                               # sites we patch: address -> stock bytes
     0xFF1774: "31fc01401602",           # main loop top
     0xFF277C: "4eb84e40", 0xFF2A9E: "4eb84e40",   # the overlay loader's callers
     0xFF53B8: "4eb84e40", 0xFF8A24: "4eb84e40",
+    0xFFB252: "103816b6",               # FULL LEVEL: move.b 0x16B6.w,d0 (voice start)
+    0xFFAE54: "4a2a0014",               # ONE-SHOT: tst.b 20(a2) (key-up)
 }
 
 
@@ -71,36 +79,54 @@ def asm(name, org, entry, defs=None):
 def build(os_bin, quantize=QLABELS.index("1/16"), swing=50, choke=mkresident.CHOKE_DEFAULT):
     if not 0 <= quantize <= 8 or not 0 <= swing <= 75:
         raise ValueError("--quantize 0-8, --swing 0-75")
-    reg = {"REGION": REGION & 0xFFFF, "LEN": LEN}
-    win, wsyms = asm("window.s", REGION, "wmagic",
-                     {"QUANT_DEFAULT": quantize, "SWING_DEFAULT": swing,
-                      "REGION16": REGION & 0xFFFF})
-    mute, msyms = mkhook.assemble(os.path.join(SRC, "resmute.s"), MUTE_AT, "mute",
-                                  {"CHOKE_RATE": choke})
-    if msyms["mute"] != MUTE_AT or msyms["mute_end"] > MUTE_END:
-        raise ValueError("mute code doesn't fit")
-    swapx, _ = asm("swapx.s", SWAPX_AT, "swapx", reg)
-    calls = {"SWAPX": SWAPX_AT & 0xFFFF, "PATCH": wsyms["patch"] & 0xFFFF,
-             "UNPATCH": wsyms["unpatch"] & 0xFFFF}
-    ldr0, _ = mkhook.assemble(os.path.join(SW, "ldr.s"), 0, "ldr", calls)
-    ldr_at = LDR_END - len(ldr0)
-    ldr, _ = asm("ldr.s", ldr_at, "ldr", calls)
-    ml, _ = asm("ml.s", ML_AT, "ml", calls)
-    for name, at, code, end in (("swapx", SWAPX_AT, swapx, SWAPX_END), ("ml", ML_AT, ml, ML_END),
-                                ("ldr", ldr_at, ldr, LDR_END)):
-        if at + len(code) > end or at < (LDR_MIN if name == "ldr" else at):
-            raise ValueError(f"{name} doesn't fit")
-    if ldr_at + len(ldr) != LDR_END:
-        raise ValueError("ldr must end at the loader")
-    chunks = [(MUTE_AT, mute), (SWAPX_AT, swapx), (ldr_at, ldr), (ML_AT, ml),
-              (0xFFAF92, bytes.fromhex("4eb8") + w(MUTE_AT))]
-    chunks += [(a, bytes.fromhex("4eb8") + w(ldr_at)) for a in (0xFF277C, 0xFF2A9E, 0xFF53B8, 0xFF8A24)]
-    chunks += [(0xFF1774, bytes.fromhex("4eb8") + w(ML_AT) + bytes.fromhex("4e71"))]   # last
-    image = bytearray(win) + b"".join(chunk(a, d) for a, d in chunks) + w(0)
-    if wsyms["chunks"] - REGION != len(win):
-        raise ValueError("the chunk table must follow window.s")
-    if len(image) > LEN:
-        raise ValueError(f"window image is {len(image)} bytes, the region {LEN}")
+    def image_for(length):
+        """Everything at region length `length` (only swapx and the boot
+        stage use it, and their size doesn't depend on it)."""
+        reg = {"REGION": REGION & 0xFFFF, "LEN": length}
+        swapx, _ = asm("swapx.s", SWAPX_AT, "swapx", reg)
+        win, wsyms = asm("window.s", REGION, "wmagic",
+                         {"QUANT_DEFAULT": quantize, "SWING_DEFAULT": swing,
+                          "REGION16": REGION & 0xFFFF, "SWAPX": SWAPX_AT & 0xFFFF})
+        mute, msyms = mkhook.assemble(os.path.join(SRC, "resmute.s"), MUTE_AT, "mute",
+                                      {"CHOKE_RATE": choke})
+        if msyms["mute"] != MUTE_AT or msyms["mute_end"] > MUTE_END:
+            raise ValueError("mute code doesn't fit")
+        calls = {"SWAPX": SWAPX_AT & 0xFFFF, "PATCH": wsyms["patch"] & 0xFFFF,
+                 "UNPATCH": wsyms["unpatch"] & 0xFFFF, "OUT": wsyms["out"] & 0xFFFF,
+                 "ONESHOT2": OS2_AT & 0xFFFF}
+        ldr0, _ = mkhook.assemble(os.path.join(SW, "ldr.s"), 0, "ldr", calls)
+        ldr_at = LDR_END - len(ldr0)
+        ldr, _ = asm("ldr.s", ldr_at, "ldr", calls)
+        ml, _ = asm("ml.s", ML_AT, "ml", calls)
+        lvl, _ = asm("lvl.s", LVL_AT, "lvl")
+        os1, _ = asm("oneshot.s", OS1_AT, "oneshot", calls)
+        os2, _ = asm("oneshot2.s", OS2_AT, "oneshot2")
+        for name, at_, code, end in (("swapx", SWAPX_AT, swapx, SWAPX_END), ("ml", ML_AT, ml, ML_END),
+                                     ("ldr", ldr_at, ldr, LDR_END), ("lvl", LVL_AT, lvl, LVL_END),
+                                     ("oneshot", OS1_AT, os1, OS1_END),
+                                     ("oneshot2", OS2_AT, os2, OS2_END)):
+            if at_ + len(code) > end or (name == "ldr" and at_ < LDR_MIN):
+                raise ValueError(f"{name} doesn't fit ({len(code)} bytes)")
+        if ldr_at + len(ldr) != LDR_END:
+            raise ValueError("ldr must end at the loader")
+        chunks = [(MUTE_AT, mute), (SWAPX_AT, swapx), (ldr_at, ldr), (ML_AT, ml),
+                  (LVL_AT, lvl), (OS1_AT, os1), (OS2_AT, os2),
+                  (0xFFAF92, bytes.fromhex("4eb8") + w(MUTE_AT)),
+                  (0xFFB252, bytes.fromhex("4eb8") + w(LVL_AT)),
+                  (0xFFAE54, bytes.fromhex("4eb8") + w(OS1_AT))]
+        chunks += [(a, bytes.fromhex("4eb8") + w(ldr_at)) for a in (0xFF277C, 0xFF2A9E, 0xFF53B8, 0xFF8A24)]
+        chunks += [(0xFF1774, bytes.fromhex("4eb8") + w(ML_AT) + bytes.fromhex("4e71"))]   # last
+        image = bytearray(win) + b"".join(chunk(a, d) for a, d in chunks) + w(0)
+        if wsyms["chunks"] - REGION != len(win):
+            raise ValueError("the chunk table must follow window.s")
+        return image, wsyms, chunks, ldr_at, reg
+
+    image, *_ = image_for(16)
+    LEN = (len(image) + 15) // 16 * 16
+    image, wsyms, chunks, ldr_at, reg = image_for(LEN)
+    if len(image) > LEN or REGION + LEN > REGION_END:
+        raise ValueError(f"window image is {len(image)} bytes, the region {REGION_END - REGION}")
+    win = image
 
     reserve = (2 * LEN + 511) // 512 * 512
     defs = dict(reg, RESERVE=reserve, MAGIC_AT=0)
@@ -133,7 +159,7 @@ def build(os_bin, quantize=QLABELS.index("1/16"), swing=50, choke=mkresident.CHO
         {"addr": f"0x{CARRIER:06X}", "expect": "00" * len(carrier), "data": carrier.hex()},
         {"addr": f"0x{OVERLAY_WINDOW:06X}", "overlay": 3, "expect": slot3.hex(), "data": ov3.hex()},
     ]}
-    info = {"window": wsyms, "image_bytes": len(image), "carrier_bytes": len(carrier),
+    info = {"window": wsyms, "image_bytes": len(image), "carrier_bytes": len(carrier), "len": LEN,
             "ldr_at": ldr_at, "reserve": reserve, "chunks": chunks, "ov3": bytes(ov3)}
     return patch, info
 
@@ -151,7 +177,8 @@ def main():
     a = ap.parse_args()
     patch, info = build(open(a.os, "rb").read(), QLABELS.index(a.quantize), a.swing, a.choke)
     json.dump(patch, open(a.out, "w"), indent=1)
-    print(f"{a.out}: window image {info['image_bytes']} of {LEN} bytes, boot stage "
+    print(f"{a.out}: window image {info['image_bytes']} bytes at {REGION:#x} (room for "
+          f"{REGION_END - REGION}), boot stage "
           f"{info['carrier_bytes']} bytes, store {info['reserve']} bytes of sample RAM")
     if a.disk:
         stock, out = a.disk

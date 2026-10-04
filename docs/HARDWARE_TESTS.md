@@ -142,6 +142,31 @@ happens right there, a few milliseconds), anything odd on the display, any
 ERROR number. Saving and loading the sequence afterwards should be normal:
 the quantized notes are ordinary notes.
 
+## Next disk (`EPS249_NEXT`): HIT (full level / one-shot), more room
+
+Everything on `EPS249_SWING`, plus:
+
+* **HIT** on the Layer page: Edit, **9 Layer**, ◄ once from the first
+  parameter: `HIT=NORMAL`. ▲ steps through FULL LEVEL (every hit at full
+  velocity, however hard you play), ONE-SHOT (letting go of the key doesn't
+  start the release, so a sample without a loop plays to its end; looping
+  samples release as usual), and FULL+1SHOT (both). It's per layer: a kit
+  or a chopped break sampled into one instrument has one layer, so it's the
+  whole instrument. Saved with the instrument.
+* Behind the scenes: the borrowed part of the OS is now the whole
+  sequence-commands overlay except its first kilobyte (room for about 7 KB
+  of our code, 2.4 KB used), and our code steps aside whenever you're in
+  Command mode or sampling, so those always see the stock OS.
+
+MAME (13-bit sample RAM, boot ROM 2.40, `mame/test_swing_hw.py`, 16
+checks): everything on the swing list, plus HIT = FULL+1SHOT plays a soft
+snare at velocity 127 and lets it ring past the key-up; NORMAL plays it as
+hit and releases it.
+
+**Try:** the swing test above, then HIT: set FULL+1SHOT on a drum kit's
+layer and play soft and hard, short taps on long samples. Tell us whether
+it feels right, and whether a sample with a loop still releases.
+
 ## Test 1: code area + mute groups (`EPS249_MUTETEST`)
 
 > **Doesn't run on hardware** (ERROR 131: code in sample RAM). Kept for

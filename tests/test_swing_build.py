@@ -25,14 +25,21 @@ class SwingBuild(unittest.TestCase):
         cls.patch, cls.info = M.build(cls.os_bin)
 
     def test_fits(self):
-        self.assertLessEqual(self.info["image_bytes"], M.LEN)
+        self.assertLessEqual(self.info["image_bytes"], self.info["len"])
+        self.assertLessEqual(M.REGION + self.info["len"], M.REGION_END)
         self.assertLessEqual(M.CARRIER + self.info["carrier_bytes"], M.CARRIER_END)
+
+    def test_homes_dont_overlap(self):
+        spans = sorted((a, a + len(d)) for a, d in self.info["chunks"])
+        for (a0, e0), (a1, _) in zip(spans, spans[1:]):
+            self.assertLessEqual(e0, a1, f"{a0:#x} overlaps {a1:#x}")
 
     def test_resident_homes(self):
         homes = [(M.MUTE_AT, M.MUTE_END), (M.ML_AT, M.ML_END), (M.SWAPX_AT, M.SWAPX_END),
-                 (M.LDR_MIN, M.LDR_END)]
+                 (M.LDR_MIN, M.LDR_END), (M.LVL_AT, M.LVL_END), (M.OS1_AT, M.OS1_END),
+                 (M.OS2_AT, M.OS2_END)]
         for a, d in self.info["chunks"]:
-            if len(d) > 6:                      # code (the rest are hook words)
+            if a not in M.STOCK:                # code (the rest are hook words)
                 self.assertTrue(any(lo <= a and a + len(d) <= hi for lo, hi in homes), hex(a))
         ldr = [(a, d) for a, d in self.info["chunks"] if a == self.info["ldr_at"]][0]
         self.assertEqual(ldr[0] + len(ldr[1]), M.LDR_END)      # falls into the loader
@@ -41,6 +48,8 @@ class SwingBuild(unittest.TestCase):
         ch = dict(self.info["chunks"])
         self.assertEqual(ch[0xFFAF92].hex(), "4eb8" + f"{M.MUTE_AT & 0xFFFF:04x}")
         self.assertEqual(ch[0xFF1774].hex(), "4eb8" + f"{M.ML_AT & 0xFFFF:04x}" + "4e71")
+        self.assertEqual(ch[0xFFB252].hex(), "4eb8" + f"{M.LVL_AT & 0xFFFF:04x}")
+        self.assertEqual(ch[0xFFAE54].hex(), "4eb8" + f"{M.OS1_AT & 0xFFFF:04x}")
         for a in (0xFF277C, 0xFF2A9E, 0xFF53B8, 0xFF8A24):
             self.assertEqual(ch[a].hex(), "4eb8" + f"{self.info['ldr_at'] & 0xFFFF:04x}")
         self.assertEqual(list(ch)[-1], 0xFF1774)                # the main loop hook last
@@ -62,7 +71,7 @@ class SwingBuild(unittest.TestCase):
         o0 = epstool.addr_to_offset(M.OVERLAY_WINDOW, 0)
         ov0 = self.os_bin[o0:o0 + M.OVERLAY_SIZE]
         ov3 = self.info["ov3"]
-        lo, hi = M.REGION - M.OVERLAY_WINDOW, M.REGION - M.OVERLAY_WINDOW + M.LEN
+        lo, hi = M.REGION - M.OVERLAY_WINDOW, M.REGION - M.OVERLAY_WINDOW + self.info["len"]
         self.assertEqual(ov3[:lo], ov0[:lo])
         self.assertEqual(ov3[hi:], ov0[hi:])
         self.assertEqual(ov3[lo:lo + 4], b"SWG1")
