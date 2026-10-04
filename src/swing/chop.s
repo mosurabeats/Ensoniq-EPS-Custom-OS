@@ -8,8 +8,9 @@
 | only copy of it (the OS's own COPY WAVESAMPLE, 0xFFA2D6: the sample data
 | is shared, a copy costs 288 bytes) with:
 | * SMPL START / SAMPLE END on the slice (loop points too), FORWARD-NO LOOP;
-| * one key, from the wavesample's lowest key up (C2 if that's below the
-|   keyboard), ROOT KEY = that key (the slice plays at its original pitch).
+| * one key, from the wavesample's ROOT KEY up if that's in its key range
+|   (else its lowest key; C2 if that's below the keyboard), ROOT KEY = that
+|   key (the slice plays at its original pitch).
 | The wavesample itself keeps its other keys. A layer's key map is built
 | from its wavesamples' ranges in their order (ROM 0xC08F22: a later one
 | wins), and the copies come after it. Every field we write is a high byte
@@ -131,9 +132,14 @@ slices: .byte   2, 3, 4, 6, 8, 12, 16, 24, 32
 | the end of the instrument: nothing we read moves).
 5:      lea     cv(pc),a6               | (the OS's message loop uses a6)
         bsr     src_rec                 | a3 = the wavesample, a1 = data
-        moveq   #0,d0
-        move.b  W_KEYLO(a3),d0          | slices from its lowest key up,
-        cmpi.w  #KEY_C2,d0              | but not below the keyboard
+        moveq   #0,d0                   | slices from its ROOT KEY up when
+        move.b  W_ROOT(a3),d0           | that's one of its keys (a sample
+        cmp.b   W_KEYLO(a3),d0          | over the whole keyboard: where it
+        bcs.s   3f                      | was put), else from its lowest
+        cmp.b   W_KEYHI(a3),d0          | key; not below the keyboard
+        bls.s   4f
+3:      move.b  W_KEYLO(a3),d0
+4:      cmpi.w  #KEY_C2,d0
         bcc.s   1f
         moveq   #KEY_C2,d0
 1:      move.w  d0,C_KEY(a6)

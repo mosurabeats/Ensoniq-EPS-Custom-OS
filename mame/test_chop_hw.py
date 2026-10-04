@@ -10,6 +10,8 @@ ROM 2.40, as on the hardware.
   slice 2.
 * mame/keys/chop_refuse.txt: with WS=ALL, NO EDIT WS SELECTED; ENTER then
   CANCEL: COMMAND ABORTED; nothing made.
+* mame/keys/chop_root.txt: wavesample 4 (keys 61-75, ROOT KEY 72): the
+  slices start at its ROOT KEY, 72.
 Needs what mame/test_mutegroups.py needs.
 """
 import os
@@ -82,10 +84,12 @@ def main():
     os.makedirs(T.OUT, exist_ok=True)
     disk = H.make_disk()
     from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(2) as ex:
+    with ThreadPoolExecutor(3) as ex:
         fa = ex.submit(run, disk, "chop_a", "chop.txt")
         fb = ex.submit(run, disk, "chop_b", "chop_refuse.txt")
+        fc = ex.submit(run, disk, "chop_c", "chop_root.txt")
         (a_out, a_before, a_after), (b_out, b_before, b_after) = fa.result(), fb.result()
+        c_out, c_before, c_after = fc.result()
     ok = []
 
     def check(what, cond):
@@ -139,6 +143,13 @@ def main():
     check("WS=ALL: NO EDIT WS SELECTED", "NO EDIT WS SELECTED" in b_out)
     check("CANCEL: COMMAND ABORTED", "COMMAND ABORTED" in b_out)
     check("nothing made", I.wavesamples(b_after) == I.wavesamples(b_before) and b_after == b_before)
+    Wc0, Wc = I.wavesamples(c_before), I.wavesamples(c_after)
+    newc = sorted(set(Wc) - set(Wc0))
+    kmc = I.key_map(c_after)
+    check("from the ROOT KEY: wavesample 4 (keys 61-75, root 72) on 72 up",
+          "16 SLICES CREATED" in c_out and len(newc) == 16
+          and [dict(kmc.get(72 + i, []))[0] for i in range(16)] == newc
+          and all(c_after[Wc[w] + 0x22] == 4 for w in newc))
     print("   slices:", list(zip(starts, ends)))
     print("   voices:", {k: hex(v) for k, v in voices.items()}, "slice 2 at", hex(base + W[new[1]]))
     sys.exit(0 if all(ok) else 1)

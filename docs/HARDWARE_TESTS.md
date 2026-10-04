@@ -172,8 +172,9 @@ Everything on `EPS249_SWING`, plus:
   moved to the nearest zero crossing (at most about 4 ms away, so no
   clicks and the hits stay whole). Each slice is a "parameters only" copy
   (it plays the same sample data, so it costs almost no memory) on its own
-  key, from the wavesample's lowest key up (from C2 if that's lower), at
-  its original pitch, FORWARD-NO LOOP. Slices replace whatever those keys
+  key, from the wavesample's ROOT KEY up (or its lowest key if the root
+  isn't one of its keys; C2 at the lowest), at its original pitch,
+  FORWARD-NO LOOP. Set HIT = ONE-SHOT so a tap plays a slice through. Slices replace whatever those keys
   played before, so chop a break in its own instrument. A slice is an
   ordinary wavesample: edit its envelope, start/end, mute group; delete it
   with DELETE WAVESAMPLE; it's saved with the instrument and loads on a
@@ -197,10 +198,10 @@ hit and releases it. `mame/test_undo_hw.py` (8 checks): G2 played in pass
 2 then RECORD: gone from pass 3 on, the earlier D2 stays; RECORD early in
 pass 2 before playing anything: pass 1's D2 isn't heard in pass 2 and
 isn't kept; notes played after an undo are kept; the kept take has no
-undo marks left. `mame/test_chop_hw.py` (16 checks): the TR 8O8 kick chopped
+undo marks left. `mame/test_chop_hw.py` (17 checks): the TR 8O8 kick chopped
 into 16: 16 wavesamples on C2 up, end to end over the kick, cuts on the
 nearest zero crossings, C#2 plays slice 2; NO EDIT WS SELECTED with WS=ALL;
-CANCEL makes nothing. `mame/test_tune_hw.py` (6 checks): TUNE ▼ ▼ ▲ on the
+CANCEL makes nothing; wavesample 4 (keys 61-75, ROOT KEY 72) slices from 72. `mame/test_tune_hw.py` (6 checks): TUNE ▼ ▼ ▲ on the
 TR 8O8 shows +0, -1, -2, -1 and leaves every wavesample of layer 1 one
 semitone lower, layer 2 untouched.
 

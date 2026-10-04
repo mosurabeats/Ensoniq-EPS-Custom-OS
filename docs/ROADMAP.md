@@ -186,8 +186,8 @@ many button presses per slice.
 
 **Done (swing build, `src/swing/chop.s`):** Edit, 8 Wave, the last entry
 `CHOP=PRESS ENTER`; ENTER, ▲/▼ for 2-32 slices, ENTER. EQUAL slices, cuts
-on the nearest zero crossing, from the wavesample's lowest key up (C2 at
-the lowest), through the OS's own COPY WAVESAMPLE (`0xFFA2D6`).
+on the nearest zero crossing, from the wavesample's ROOT KEY up (its lowest
+key if the root isn't one of its keys; C2 at the lowest), through the OS's own COPY WAVESAMPLE (`0xFFA2D6`).
 docs/ANALYSIS.md -> Swing build -> CHOP. Still to do: GRID (tempo + bars,
 for an untrimmed sample), TRANSIENT (at the hits), a FIRST KEY choice.
 

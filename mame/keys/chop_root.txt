@@ -1,0 +1,25 @@
+# CHOP from the ROOT KEY: the TR 8O8's wavesample 4 covers keys 61-75 with
+# ROOT KEY 72 (C5): select it with C5 (key 72: code 36), 8 Wave, ◄ = CHOP,
+# ENTER, ENTER: 16 slices from C5 up. (Times as mame/keys/chop.txt.)
+13.5 8f 00    # Load
+13.65 0f 00
+14.5 a3 00    # Enter·Yes
+14.65 23 00
+15.5 82 00    # instrument 1: load TR 8O8
+15.65 02 00
+32.0 82 00    # select instrument 1
+32.15 02 00
+33.0 85 00    # Edit
+33.15 05 00
+33.5 91 00    # ►: the WS field
+33.65 11 00
+34.0 a4 40    # C5: wavesample 4
+34.1 24 40
+34.5 a4 00    # 8 Wave
+34.65 24 00
+35.0 90 00    # ◄: CHOP
+35.15 10 00
+36.0 a3 00    # ENTER: CHOP INTO 16 SLICES?
+36.15 23 00
+38.0 a3 00    # ENTER: chop
+38.15 23 00

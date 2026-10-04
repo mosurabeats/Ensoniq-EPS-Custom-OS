@@ -981,7 +981,10 @@ wrap and commit hooks point at the flags; qbuf saves it.)
   samples away; slices end where the next starts. The cut points are
   worked out before the first copy (copies go at the end of the instrument,
   so the source doesn't move, but other instruments may).
-MAME: `mame/test_chop_hw.py` (16 checks).
+MAME: `mame/test_chop_hw.py` (17 checks). Slices start at the source's
+ROOT KEY when that's inside its range (+0x112..+0x114), else at its lowest
+key (C2 at the lowest): first hardware test, a fresh sample over the whole
+keyboard chopped from C2 instead of middle C where it was put.
 
 **TUNE** (`src/swing/tune.s`). Edit, 9 Layer, before HIT: semitones for
 the whole layer, -16..+15, kept in the layer record's spare byte +0x2F

@@ -113,8 +113,13 @@ with COPY WAVESAMPLE (parameters only), but in one step.
 
 What you get:
 
-* Slices on consecutive keys, from the wavesample's lowest key up (from
-  **C2** if that's lower), each at its original pitch, no loop.
+* Slices on consecutive keys, starting at the wavesample's **ROOT KEY**
+  (the key it plays at its original pitch, e.g. middle C for a fresh
+  sample), each at its original pitch, no loop. (If the root is outside
+  the wavesample's keys: from its lowest key, C2 at the lowest.)
+* Tapping a key briefly cuts a slice short (key-up starts its release).
+  To let every slice play through, like pads, set **HIT = ONE-SHOT** on
+  the Layer page.
 * Each cut is moved to the nearest zero crossing (within about 4 ms), so
   the slices don't click and the hits stay whole.
 * The slices share the original sample data, so 32 slices cost under
