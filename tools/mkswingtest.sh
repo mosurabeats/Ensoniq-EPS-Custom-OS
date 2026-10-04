@@ -2,8 +2,8 @@
 # Build the swing build (tools/mkswing.py): mute groups (MUTE GROUP on the
 # 6 Amp page), MPC-style loop recording (QUANTIZE and SWING% on the Seq·Song
 # page, RECORD while loop recording = undo), HIT (FULL LEVEL / ONE-SHOT,
-# the Layer page) and CHOP (Edit, 8 Wave). Just the OS: the rest of the disk is free for your own
-# sounds.
+# the Layer page) and CHOP (Edit, 8 Wave). Just the OS: the rest of the
+# disk is free for your own sounds.
 # Writes build/test/$NAME.hfe (Gotek) and .img (MAME); NAME defaults to
 # EPS249_NEXT. (EPS249_SWING, the first hardware test of it, is commit
 # dfea704 of this script.) docs/HARDWARE_TESTS.md.
