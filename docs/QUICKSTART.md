@@ -1,9 +1,9 @@
 # Quick start: the custom EPS OS (`EPS249_NEXT`)
 
 Everything the stock EPS OS 2.49 does, plus mute groups, MPC-style swing
-for loop recording, loop undo, HIT (full level / one-shot) and CHOP. For
-the original EPS (tested with boot ROM 2.40 and the 2x expander), from a
-Gotek or a floppy.
+for loop recording, loop undo, HIT (full level / one-shot), CHOP and SP
+sampling mode. For the original EPS (tested with boot ROM 2.40 and the 2x
+expander), from a Gotek or a floppy.
 
 ## Boot
 
@@ -30,6 +30,7 @@ end. **▲ / ▼** or the slider change a value.
 | CHOP | Edit, **8 Wave**, ◄ once | (an action) |
 | SWING% / QUANTIZE | Edit, **Seq·Song**, ◄ once / twice | not saved: 1/16 and 50 at power-on |
 | Loop undo | **RECORD** while loop recording | |
+| SP sampling mode | sampling: SAMPLE RATE = **26.04 KHZ** | (a sampling setting) |
 
 To pick what you're editing (instrument, layer, wavesample): press
 **Edit**. With the cursor on **WS=**, press a key to select the wavesample
@@ -130,13 +131,43 @@ Things to know:
 * Good with HIT = ONE-SHOT (slices play out) and a mute group (one slice
   at a time, like an MPC's mono pad).
 
+## SP sampling mode (SP-1200 grit)
+
+The SP-1200 samples at 26.04 kHz with little filtering on its input, so
+high sounds fold back down as gritty aliasing. The EPS has that exact rate
+in its list.
+
+* Sample as usual and set **SAMPLE RATE = 26.04 KHZ**. FILTER CUTOFF
+  jumps to **20.0 KHZ**, its widest setting: the input is then barely
+  filtered, like the SP's. (Stock, that rate gets a 9.09 KHZ filter that
+  keeps it clean.)
+* Want it a bit smoother? Lower FILTER CUTOFF by hand after picking the
+  rate. Every other rate works as on the stock EPS.
+* Then trim, CHOP and pitch as usual. For the full SP feel: 12-bit
+  crunch and SP-style pitching are planned (CRUSH).
+
+## Tuning a sample down (or up)
+
+The stock EPS already does this, on the **4 Pitch** page (Edit):
+
+* **ROOT KEY** is the key that plays the sample at its original pitch.
+  Raise it by one and the sample plays **one semitone lower** on every
+  key; lower it to play higher. **FINE** tunes between semitones.
+* With **WS=ALL** selected, ROOT KEY moves every wavesample of the layer
+  by the same amount (a whole kit or a chopped break goes down together,
+  each keeping its place).
+* With one wavesample selected, it tunes just that one.
+* The old "sample the record at 45, play at 33" trick: raise ROOT KEY by
+  5 and FINE a little lower (45 to 33 1/3 is 5.2 semitones down).
+
 ## Good to know
 
-* **Command mode and sampling are the stock OS.** Our code steps aside
-  while you're in Command mode or sampling, and comes back when you
-  leave. Sequence commands, disk commands and sampling work as always.
+* **Command mode and sampling are the stock OS** (apart from SP sampling
+  mode's filter choice). Our code steps aside while you're in Command
+  mode or sampling, and comes back when you leave. Sequence commands,
+  disk commands and sampling work as always.
 * **Not saved:** QUANTIZE and SWING% (1/16 and 50 at power-on). Mute
-  groups, HIT and chopped slices are saved with the instrument.
+  groups, HIT, chopped slices and tuning are saved with the instrument.
 * **If you see an ERROR:** write down the number and what you just did,
   then power off and boot again.
 

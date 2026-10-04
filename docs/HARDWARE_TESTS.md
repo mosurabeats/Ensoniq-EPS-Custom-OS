@@ -142,7 +142,7 @@ happens right there, a few milliseconds), anything odd on the display, any
 ERROR number. Saving and loading the sequence afterwards should be normal:
 the quantized notes are ordinary notes.
 
-## Next disk (`EPS249_NEXT`): HIT, loop undo, CHOP, more room
+## Next disk (`EPS249_NEXT`): HIT, loop undo, CHOP, SP sampling, more room
 
 Everything on `EPS249_SWING`, plus:
 
@@ -175,6 +175,10 @@ Everything on `EPS249_SWING`, plus:
   with DELETE WAVESAMPLE; it's saved with the instrument and loads on a
   stock EPS too. The sequencer must be stopped. Trim the sample to the
   loop first (TRUNCATE), so 16 slices of a 1-bar break are its 16ths.
+* **SP sampling mode:** when sampling, set SAMPLE RATE = 26.04 KHZ (the
+  SP-1200's rate): FILTER CUTOFF jumps to 20.0 KHZ, the widest, instead of
+  the stock 9.09 KHZ, so the input aliases like an SP-1200's. Other rates
+  are stock; FILTER CUTOFF can be lowered by hand after.
 * Behind the scenes: the borrowed part of the OS is now the whole
   sequence-commands overlay except its first kilobyte (room for about 7 KB
   of our code, 3.9 KB used), and our code steps aside whenever you're in
@@ -199,6 +203,11 @@ undo: loop record a beat, play a wrong hit and press RECORD in the same
 pass (it shouldn't come round again); play a pass, then press RECORD at
 the start of the next one before playing (that pass's notes should go
 silent). Keep with NEW and play the sequence back.
+SP sampling mode: sample the same drum break or record twice, once at
+26.04 KHZ (filter 20.0 KHZ, set by itself) and once at 26.04 with FILTER
+CUTOFF set back to 9.09 KHZ: the first should sound grittier, with hi-hats
+and cymbals folding into metallic noise. Check the display shows 20.0 KHZ
+after picking 26.04, and that other rates still pick their usual filter.
 Then CHOP: sample (or load) a drum break into its own instrument, trim it
 to a bar or two, chop it into 16 and play the slices. Tell us whether the
 cuts sound clean and land on the hits, and whether SAVE INSTRUMENT and

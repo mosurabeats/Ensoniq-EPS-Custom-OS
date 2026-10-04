@@ -37,7 +37,7 @@ class SwingBuild(unittest.TestCase):
     def test_resident_homes(self):
         homes = [(M.MUTE_AT, M.MUTE_END), (M.ML_AT, M.ML_END), (M.SWAPX_AT, M.SWAPX_END),
                  (M.LDR_MIN, M.LDR_END), (M.LVL_AT, M.LVL_END), (M.OS1_AT, M.OS1_END),
-                 (M.OS2_AT, M.OS2_END)]
+                 (M.OS2_AT, M.OS2_END), (M.SPF_AT, M.SPF_END)]
         for a, d in self.info["chunks"]:
             if a not in M.STOCK:                # code (the rest are hook words)
                 self.assertTrue(any(lo <= a and a + len(d) <= hi for lo, hi in homes), hex(a))
@@ -88,6 +88,16 @@ class SwingBuild(unittest.TestCase):
         for a, (stock, _) in sites.items():
             off = epstool.addr_to_offset(0xFF0000 | a)
             self.assertEqual(self.os_bin[off:off + 4].hex(), stock)
+
+    def test_overlay2_sp_mode(self):
+        """Overlay 2's FILTER CUTOFF reset calls the resident SP-mode code."""
+        e = [e for e in self.patch["edits"] if e.get("overlay") == 2]
+        self.assertEqual(len(e), 1)
+        self.assertEqual(int(e[0]["addr"], 16), M.SPF_SITE)
+        self.assertEqual(len(e[0]["data"]), len(e[0]["expect"]))
+        self.assertIn("4eb8" + f"{M.SPF_AT & 0xFFFF:04x}", e[0]["data"])
+        off = epstool.addr_to_offset(M.SPF_SITE, 2)
+        self.assertEqual(self.os_bin[off:off + 20].hex(), M.SPF_STOCK)
 
     def test_os_words(self):
         """Every OS word patch/unpatch switches holds the stock value we put

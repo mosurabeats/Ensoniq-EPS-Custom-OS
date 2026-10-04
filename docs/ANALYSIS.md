@@ -346,6 +346,17 @@ Overlay 2 holds the sampling code along with the disk utilities.
 | `0xFFE3E6` | Input level meter: reads the input sample from OTIS `0x200018`, peak and average |
 | `0xFFFD14` | Sampling defaults |
 
+**SP sampling mode** (swing build, `src/swing/spf.s`). The filter reset
+`0xFFE20E` (20 bytes, overlay 2, only caller `0xFF45A6` with `a6` = `0x20F`)
+is rewritten in place to `moveq #0,d0; move.b (a6),d0; movea.l
+#0xC06FFE,a0; jsr 0x5214.w; move.b d1,0x212.w; rts`, and the resident
+code at `0xFF5214` (the tail of the boot-only `0xFF5212`) returns the
+table's filter, or 11 (20.0 KHZ) for rate 27 (26.04 kHz = 625 kHz / 24,
+the SP-1200's rate; the stock filter there is 5, 9.09 KHZ). The overlay-2
+edit is in the OS file (`tools/mkswing.py`); `tests/test_spmode.py` runs
+the patched overlay for all 40 rates. MAME can't show the sampling page:
+it stops at the level meter on the stock OS too.
+
 The resident analog-control scanner (`0xFFBE46`, 6 × 24-byte records at
 `0xFFC334`) also drives OP4–OP6 to select which front-panel analog input to
 read. Sampling disables that interrupt (IMR = `0x20`) before using the same
@@ -967,8 +978,8 @@ What we have now, all measured on 13-bit sample RAM:
 * **Resident** (always there, for hooks that must also work in Command
   mode: mute, HIT, the swap itself): boot-only code only. Used: `0xFF1720`
   (mute 68 + HIT 8), `0xFF2990` (ml 38), `0xFF4E20` (ldr 32), `0xFF4EA8`
-  (HIT 26), `0xFF86E8` (swapx 30), `0xFF874C` (HIT 26). Left: `0xFF5214-
-  0xFF5223` (16) and a few 2-4 byte ends. Not usable: `0xFF17D4` and
+  (HIT 26), `0xFF86E8` (swapx 30), `0xFF874C` (HIT 26), `0xFF5214` (SP
+  sampling mode 14). Left: a few 2-4 byte ends. Not usable: `0xFF17D4` and
   `0xFF242A` (called at runtime, e.g. by the disk code), the zero runs in
   `0xFF818C-0xFF844A` (kernel jump and vector tables with unused slots:
   the ROM kernel indexes them).
