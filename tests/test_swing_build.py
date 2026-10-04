@@ -89,6 +89,20 @@ class SwingBuild(unittest.TestCase):
             off = epstool.addr_to_offset(0xFF0000 | a)
             self.assertEqual(self.os_bin[off:off + 4].hex(), stock)
 
+    def test_os_words(self):
+        """Every OS word patch/unpatch switches holds the stock value we put
+        back (the Seq·Song page code, Edit's ENTER, the CHOP entry's type)."""
+        ov3, w = self.info["ov3"], self.info["window"]
+        o = w["words"] - M.OVERLAY_WINDOW
+        seen = set()
+        for i in range(w["NWORDS"]):
+            e = ov3[o + 6 * i:o + 6 * i + 6]
+            a, stock = 0xFF0000 | int.from_bytes(e[:2], "big"), e[2:4]
+            off = epstool.addr_to_offset(a)
+            self.assertEqual(self.os_bin[off:off + 2], stock, hex(a))
+            seen.add(a)
+        self.assertTrue({0xFFD064, 0xFFD066 + 2 * w["CHOP_TYPE"], 0xFFD098 + 2 * w["CHOP_TYPE"]} <= seen)
+
 
 if __name__ == "__main__":
     unittest.main()

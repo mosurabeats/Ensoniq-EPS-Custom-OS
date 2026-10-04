@@ -142,7 +142,7 @@ happens right there, a few milliseconds), anything odd on the display, any
 ERROR number. Saving and loading the sequence afterwards should be normal:
 the quantized notes are ordinary notes.
 
-## Next disk (`EPS249_NEXT`): HIT (full level / one-shot), more room
+## Next disk (`EPS249_NEXT`): HIT, loop undo, CHOP, more room
 
 Everything on `EPS249_SWING`, plus:
 
@@ -160,9 +160,24 @@ Everything on `EPS249_SWING`, plus:
   instead (they stop sounding right away). One press per pass: a second
   press in the same pass does nothing. No message on the display. Undone
   notes are gone for good at the next loop wrap or at STOP + KEEP = NEW.
+* **CHOP** (automatic chopping): pick a wavesample in Edit (Edit, ► to
+  the WS field, press a key it plays), then **8 Wave** and ◄ once from the
+  first parameter: `CHOP=PRESS ENTER`. ENTER: `CHOP INTO 16 SLICES?`, ▲ / ▼
+  pick 2, 3, 4, 6, 8, 12, 16, 24 or 32, ENTER chops (CANCEL doesn't):
+  `16 SLICES CREATED`. The wavesample is cut into equal slices, each cut
+  moved to the nearest zero crossing (at most about 4 ms away, so no
+  clicks and the hits stay whole). Each slice is a "parameters only" copy
+  (it plays the same sample data, so it costs almost no memory) on its own
+  key, from the wavesample's lowest key up (from C2 if that's lower), at
+  its original pitch, FORWARD-NO LOOP. Slices replace whatever those keys
+  played before, so chop a break in its own instrument. A slice is an
+  ordinary wavesample: edit its envelope, start/end, mute group; delete it
+  with DELETE WAVESAMPLE; it's saved with the instrument and loads on a
+  stock EPS too. The sequencer must be stopped. Trim the sample to the
+  loop first (TRUNCATE), so 16 slices of a 1-bar break are its 16ths.
 * Behind the scenes: the borrowed part of the OS is now the whole
   sequence-commands overlay except its first kilobyte (room for about 7 KB
-  of our code, 2.8 KB used), and our code steps aside whenever you're in
+  of our code, 3.9 KB used), and our code steps aside whenever you're in
   Command mode or sampling, so those always see the stock OS.
 
 MAME (13-bit sample RAM, boot ROM 2.40, `mame/test_swing_hw.py`, 16
@@ -172,7 +187,10 @@ hit and releases it. `mame/test_undo_hw.py` (8 checks): G2 played in pass
 2 then RECORD: gone from pass 3 on, the earlier D2 stays; RECORD early in
 pass 2 before playing anything: pass 1's D2 isn't heard in pass 2 and
 isn't kept; notes played after an undo are kept; the kept take has no
-undo marks left.
+undo marks left. `mame/test_chop_hw.py` (16 checks): the TR 8O8 kick chopped
+into 16: 16 wavesamples on C2 up, end to end over the kick, cuts on the
+nearest zero crossings, C#2 plays slice 2; NO EDIT WS SELECTED with WS=ALL;
+CANCEL makes nothing.
 
 **Try:** the swing test above, then HIT: set FULL+1SHOT on a drum kit's
 layer and play soft and hard, short taps on long samples. Tell us whether
@@ -181,6 +199,10 @@ undo: loop record a beat, play a wrong hit and press RECORD in the same
 pass (it shouldn't come round again); play a pass, then press RECORD at
 the start of the next one before playing (that pass's notes should go
 silent). Keep with NEW and play the sequence back.
+Then CHOP: sample (or load) a drum break into its own instrument, trim it
+to a bar or two, chop it into 16 and play the slices. Tell us whether the
+cuts sound clean and land on the hits, and whether SAVE INSTRUMENT and
+loading it back keep the slices.
 
 ## Test 1: code area + mute groups (`EPS249_MUTETEST`)
 

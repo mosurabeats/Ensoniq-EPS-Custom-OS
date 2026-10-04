@@ -66,6 +66,7 @@ mame/run.sh build/test/EPS249_MUTETEST.img      # boot a disk, print the display
 tools/fetch.sh sounds && python3 mame/test_resident.py    # the hardware build (13-bit sample RAM, ROM 2.40)
 python3 mame/test_swing_hw.py                            # the swing build: loop recording, swing, mute, commands
 python3 mame/test_undo_hw.py                             # the swing build: loop undo (RECORD while loop recording)
+python3 mame/test_chop_hw.py                             # the swing build: CHOP (Edit, 8 Wave)
 python3 mame/test_mutegroups.py                          # mute groups with a real kit (code area)
 python3 mame/test_loop_record.py                         # loop recording, auto-keep
 python3 mame/test_swing.py                               # swing quantize of LOOPED takes

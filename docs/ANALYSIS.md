@@ -894,6 +894,62 @@ A wrap with a key held can't re-encode (as for quantize): U_KILL becomes
 `mame/test_undo_hw.py`. (Found while testing it: sq uses `a4`, which the
 wrap and commit hooks point at the flags; qbuf saves it.)
 
+**CHOP** (`src/swing/chop.s`). Edit, 8 Wave, the last entry
+"CHOP=PRESS ENTER": ENTER asks "CHOP INTO 16 SLICES?", ▲/▼ pick 2, 3, 4,
+6, 8, 12, 16, 24 or 32, ENTER chops, CANCEL doesn't. What it builds on:
+* **Parameter storage is per page.** A descriptor's "where" is added to a
+  base the page decides (`0xFF2E10`): absolute (OS RAM) only for page
+  records below `0xFFC0DE` (MIDI, system, sequencer, track); the
+  instrument, layer and wavesample pages add it to that record. So a value
+  of ours can't live on the Wave page. The entry is a parameter type no
+  page uses (`0x17`; also free: `0x01`, `0x06`, `0x10`, `0x13`) whose
+  display (`0xFFD066 + 2 x type`) and edit (`0xFFD098 + 2 x type`) words
+  point at ours while ours is in: the label and "PRESS ENTER", arrows do
+  nothing.
+* **Edit mode's buttons.** `0xFF1A88` dispatches a button by its id's
+  high nibble (table at `0xFF15F8`); ids `0x20-0x25` in Edit mode go
+  through `0xFFD05A + 2 x (id & 15)`: ▲ `0x20`, ▼ `0x21`, ◄ `0x22`,
+  CANCEL `0x23`, ► `0x24`, ENTER `0x25` (`0xFF2110`, which only redraws).
+  Our ENTER (`0xFFD064`) checks for the Wave page (`0xFFC08A` =
+  `0xFFC0F2`) on our entry (record +4), else goes on to `0xFF2110`. The
+  prompt is a copy of the OS's YES/NO prompt loop (`0xFFA6DA`: `trap #5`,
+  `0xFF1790` gets a message, `a2` = `0x1A88` for a button, `d2` its id).
+  `0xFF1790` and the edit-selection check `0xFF2F1C` both use `a6`.
+* **The edit selection**: instrument `0xFF169C`; that instrument's record
+  (`0xFFA4BA`, d1 = instrument) +66 layer, +68 wavesample (0 = ALL).
+  `0xFF2F1C` sets carry and `a2` = "NO EDIT WS SELECTED" (`0x175C`) when
+  there's none. `0xFFA4B0` gives an instrument's data (through its handle,
+  `0xFFDCC4…`); ROM `0xC08D0E` / `0xC08D36` (`0xFF83A0` / `0xFF83A6`, a1 =
+  data, d0 = number) a layer's / wavesample's offset.
+* **COPY WAVESAMPLE** (`0xFF4C6E`, command record `0xFFC6A4`, no overlay)
+  asks TO INST, TO LAYER, COPY = PARAMS ONLY / ALL DATA, then calls
+  `0xFFA2D6`: source `0xFF1548/154A/154C` (instrument, layer,
+  wavesample), destination `0xFF1562/1564` (instrument, layer),
+  `0xFF15ED` = 0 for parameters only (same instrument). It adds a 288-byte
+  record at the end of the instrument (`+0x22` = the wavesample whose data
+  it plays) and returns its number in d0, or carry and an error code
+  (`0xFF4A8C` turns it into a message). CHOP sets those variables, calls
+  it once per slice and puts them back.
+* **Wavesample fields** (all high bytes): `+0x06` the next wavesample in
+  the layer, `+0x22` whose data it plays, `+0xAA` ROOT KEY, `+0xEE` MODE
+  (0 FORWARD-NO LOOP … 4 LOOP AND RELEASE), `+0xF0/+0xF8/+0x100/+0x108`
+  SMPL START, SAMPLE END, LOOPSTART, LOOPEND (`movep.l`: sample number
+  x 512, a 9-bit fraction below; sample n is the word at record + 0x120 +
+  2n of the owner), `+0x112/+0x114` its lowest and highest key.
+* **Key maps are derived.** ROM `0xC08F22` (`0xFF83D0`, a1 = data, a0 =
+  layer offset) clears the layer's map (+0x30-0xDF, keys 21-108) and
+  fills each wavesample's range in chain order (layer +6, then each
+  record's +6), so a later one wins. The OS calls it after copying,
+  creating and deleting wavesamples and after range edits. (It doesn't
+  touch +0x2E, HIT.) CHOP gives each copy a one-key range and calls it.
+* **Cuts**: length / n (32/16 division in two steps), the remainder spread
+  over the slices; each inner cut goes to the nearest sign change between
+  two samples (the earlier of two as near), at most a quarter slice and 127
+  samples away; slices end where the next starts. The cut points are
+  worked out before the first copy (copies go at the end of the instrument,
+  so the source doesn't move, but other instruments may).
+MAME: `mame/test_chop_hw.py` (16 checks).
+
 **Tasks.** The wrap hook runs in the sequencer task (user stack around
 `0xFFCB56`, task 3, entry `0xFF583A`), the commit and ldr/ml in the UI task
 (`0xFFCA84`). Measured in MAME with a 50 ms busy loop in the wrap hook and
@@ -904,7 +960,8 @@ be exchanged out from under a running hook.
 
 What we have now, all measured on 13-bit sample RAM:
 * **Window region** (`0xFFE400-0xFFFFDF`, swapped in outside Command mode):
-  7136 bytes, 2838 used (swing, loop undo, patch/unpatch, page tables).
+  7136 bytes, 3870 used (swing, loop undo, CHOP, patch/unpatch, page
+  tables).
   Real-time hooks that only need to work in play/Edit mode (the sequencer
   ones) can live here. This is where the next features go.
 * **Resident** (always there, for hooks that must also work in Command

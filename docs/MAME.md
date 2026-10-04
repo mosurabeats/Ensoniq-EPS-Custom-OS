@@ -181,6 +181,16 @@ and `mame/keys/loop_undo_prev.txt` (RECORD early in pass 2 before playing:
 pass 1's D2 is skipped in pass 2 and not kept). The Lua lists voice starts
 and the kept take. 8 checks.
 
+```sh
+python3 mame/test_chop_hw.py     # CHOP on the hardware build
+```
+
+Two runs in parallel: `mame/keys/chop.txt` (the TR 8O8 kick chopped into
+16 from the Wave page, then C#2) and `mame/keys/chop_refuse.txt` (WS=ALL:
+NO EDIT WS SELECTED; ENTER, CANCEL: COMMAND ABORTED). The Lua dumps
+instrument 1 before and after (`tools/instfile.py` reads it) and lists
+voice starts with their wavesample record. 16 checks.
+
 ## The mute group test (code area)
 
 ```sh

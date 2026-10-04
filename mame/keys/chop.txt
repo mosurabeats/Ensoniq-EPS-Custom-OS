@@ -1,0 +1,36 @@
+# CHOP on the swing build (Edit, 8 Wave, the last parameter; times for its
+# slower boot): load TR 8O8, Edit, ► to WS, C2 (selects the kick, WS 1,
+# keys 21-36), 8 Wave, ◄ = CHOP ("PRESS ENTER"), ▲ (nothing), ENTER:
+# "CHOP INTO 16 SLICES?", ▲ = 24, ▼ = 16, ENTER: 16 slices from C2 up.
+# Then C#2 (the second slice). Buttons: docs/MAME.md (Edit 5, ► 17, ◄ 16,
+# 8 Wave 36, ▲ 10, ▼ 11, ENTER 35).
+13.5 8f 00    # Load
+13.65 0f 00
+14.5 a3 00    # Enter·Yes
+14.65 23 00
+15.5 82 00    # instrument 1: load TR 8O8
+15.65 02 00
+32.0 82 00    # select instrument 1
+32.15 02 00
+33.0 85 00    # Edit
+33.15 05 00
+33.5 91 00    # ►: the WS field
+33.65 11 00
+34.0 80 40    # C2: the kick's wavesample
+34.1 00 40
+34.5 a4 00    # 8 Wave
+34.65 24 00
+35.0 90 00    # ◄: CHOP
+35.15 10 00
+35.5 8a 00    # ▲: nothing
+35.65 0a 00
+36.0 a3 00    # ENTER: CHOP INTO 16 SLICES?
+36.15 23 00
+36.5 8a 00    # ▲: 24
+36.65 0a 00
+37.0 8b 00    # ▼: 16
+37.15 0b 00
+38.0 a3 00    # ENTER: chop
+38.15 23 00
+40.0 81 40    # C#2: slice 2
+40.2 01 40

@@ -138,7 +138,11 @@ pages:  .word   0xC110, 0x2562, 0x2570, 0x2570
         aw      layer_index
         aw      layer_index+2*7
         aw      layer_index+2*7
-        .equ    NPAGES, 3
+        .word   0xC0F2, 0x24FA, 0x2518, 0x251E
+        aw      wave_index
+        aw      wave_index+2*16
+        aw      wave_index+2*16
+        .equ    NPAGES, 4
 
 | Words in OS code that name the Seq·Song page's entries: when the Edit
 | pages switch between the sequence and song tables (0xFF3456), the OS
@@ -154,7 +158,13 @@ words:  .word   0x3468, 0x23DA
         aw      seq_index
         .word   0x26A0, 0x23DA
         aw      seq_index
-        .equ    NWORDS, 5
+        .word   0xD064, 0x2110          | Edit mode's ENTER (src/swing/chop.s)
+        aw      chop_enter
+        .word   0xD066+2*CHOP_TYPE, 0x388A  | display of a parameter type no
+        aw      chop_show               | page uses: the CHOP entry
+        .word   0xD098+2*CHOP_TYPE, 0x3C10  | its edit (the arrows): nothing
+        aw      chop_edit
+        .equ    NWORDS, 8
 
 | Sequencer hooks: address, stock bytes, ours (jsr abs.w).
 hooks:  .word   0x6746                  | the loop wrap: jsr 0x6AD6.w
@@ -198,6 +208,19 @@ hit_labels:
         .asciz  "FULL LEVEL"
         .asciz  "ONE-SHOT  "
         .asciz  "FULL+1SHOT"
+        .balign 2
+
+| The Wave page (Edit, 8 Wave): its ROM entries, then CHOP (src/swing/chop.s).
+wave_index:
+        .word   0x25A0, 0x25A8, 0x25B0, 0x25B8, 0x25C0, 0x25C8, 0x25D0, 0x25D8
+        .word   0x25E0, 0x25E8, 0x25F0, 0x25F8, 0x2600, 0x2608, 0x2610, 0x2618
+        aw      chop_desc
+chop_desc:
+        .byte   0x0A, CHOP_TYPE         | parameter 10, our type (no value)
+        .word   0, 0                    | (w2, where: unused)
+        aw      chop_label
+chop_label:
+        .asciz  "CHOP"
         .balign 2
 
 | The 6 Amp page: its ROM entries, then MUTE GROUP.
@@ -488,6 +511,7 @@ settings:
 grids:  .word   48, 32, 24, 16, 12, 8, 6, 4
 
         .include "sq.s"
+        .include "chop.s"
 
         .balign 2
 chunks:                                 | (tools/mkswing.py appends them)

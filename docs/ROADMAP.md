@@ -165,7 +165,7 @@ instruments with per-key wavesamples.
 | 2 | MPC-style loop recording: record-time timing correct + MPC60/3000/SP-1200 swing, **per-track swing**, no KEEP prompt, **undo last pass** | the core feel | **Hardware build** (`EPS249_SWING`, `tools/mkswing.py`): QUANTIZE + SWING% on the Seq·Song page, snapping at every loop wrap and at KEEP = NEW, the KEEP prompt kept; MAME-tested on 13-bit sample RAM with ROM 2.40, hardware test next (undo not in it yet). Emulator-only code-area build: no KEEP prompt **done**; swing quantize per instrument **done** (`--swing`, set at build time; MAME-tested); undo **done** (RECORD while loop recording; MAME-tested); QUANTIZE and SWING% on the sequencer page **done** (`--pages`; one setting for all instruments, like the MPC60) |
 | 3 | **Full level** (fixed velocity 127, like the MPC) | today: edit levels/envelopes by hand | **Hardware build** (`EPS249_NEXT`): HIT = FULL LEVEL on the Layer page, per layer, saved with the instrument; MAME-tested (13-bit, ROM 2.40). Emulator-only build: **done**: FULL LEVEL per wavesample on the 6 Amp page (WS=ALL: the instrument), saved with it (`--pages`, MAME-tested) |
 | 4 | **One-shot** (key-up ignored, sample plays through) | today: edit release/sustain by hand | **Hardware build** (`EPS249_NEXT`): HIT = ONE-SHOT on the Layer page (no-loop samples), MAME-tested. Emulator-only build: **done**: ONE-SHOT per wavesample on the 6 Amp page, for no-loop samples (`--pages`, MAME-tested) |
-| 5 | **CHOP** (below) | chopping by hand is tedious | overlay 3 (new command) |
+| 5 | **CHOP** (below) | chopping by hand is tedious | EQUAL with zero-crossing snap done on the swing build (Edit, 8 Wave; `EPS249_NEXT`, MAME-tested); GRID and TRANSIENT later |
 | 6 | **Erase while loop recording** (hold a button + key: that key's notes are erased as the loop passes) | fix takes without stopping | code area; the undo playback skip (`0xFF638A` hook) already drops notes from a take without touching the timing |
 | 7 | Note repeat while recording (held key repeats at the grid, swung) | rolls | code area, sequencer clock |
 | 8 | Very last: sampling crunch (stock FILTER CUTOFF 20.0 KHZ at low rates first, then filter OUT), S900 filter, render effects | tone | overlay 2 / 3 |
@@ -184,7 +184,14 @@ key) in the layer, then move its SAMPLE START/END. Repeat per slice. It costs
 almost no memory because every copy plays the same sample data, but it takes
 many button presses per slice.
 
-**CHOP does the same in one command** (wavesample command page):
+**Done (swing build, `src/swing/chop.s`):** Edit, 8 Wave, the last entry
+`CHOP=PRESS ENTER`; ENTER, ▲/▼ for 2-32 slices, ENTER. EQUAL slices, cuts
+on the nearest zero crossing, from the wavesample's lowest key up (C2 at
+the lowest), through the OS's own COPY WAVESAMPLE (`0xFFA2D6`).
+docs/ANALYSIS.md -> Swing build -> CHOP. Still to do: GRID (tempo + bars,
+for an untrimmed sample), TRANSIENT (at the hits), a FIRST KEY choice.
+
+**The plan** (wavesample command page):
 
 | Parameter | Values |
 |---|---|
