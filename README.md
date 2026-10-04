@@ -63,7 +63,8 @@ Whole-machine tests run in a patched MAME (docs/MAME.md):
 ```sh
 mame/build.sh                                   # once: MAME's EPS driver + our fixes
 mame/run.sh build/test/EPS249_MUTETEST.img      # boot a disk, print the display
-tools/fetch.sh sounds && python3 mame/test_mutegroups.py   # mute groups with a real kit
+tools/fetch.sh sounds && python3 mame/test_resident.py    # the hardware build (13-bit sample RAM, ROM 2.40)
+python3 mame/test_mutegroups.py                          # mute groups with a real kit (code area)
 python3 mame/test_loop_record.py                         # loop recording, auto-keep
 python3 mame/test_swing.py                               # swing quantize of LOOPED takes
 python3 mame/test_undo.py                                # loop undo (RECORD while loop recording)
@@ -73,7 +74,16 @@ python3 mame/test_panel.py                               # MUTE GROUP / QUANTIZE
 `tools/epstool.py add OS.img SOUNDS.gkh 1 OUT.img` copies an instrument onto
 a disk (reads `.img`, `.ede`, `.hfe` and Gotek `.gkh`).
 
-## Code area and test disks
+## Hardware build: mute groups (`EPS249_MUTE`)
+
+The EPS's sample RAM is 13 bits wide, so no code can run from it (the code
+area below works only in MAME). `tools/mkmutetest.sh` builds the disk to
+try on a real EPS: OS 2.49 with mute groups and the MUTE GROUP parameter
+(6 Amp page), all in OS RAM (`tools/mkresident.py`, docs/ANALYSIS.md →
+Resident build). Writes `build/test/EPS249_MUTE.hfe` (Gotek) and `.img`
+(MAME). docs/HARDWARE_TESTS.md says what to try.
+
+## Code area and test disks (emulator only)
 
 Our resident code runs from the top 4 KB of sample RAM, loaded at boot from the OS file
 (docs/ANALYSIS.md → Code area). Build a test disk with mute groups:

@@ -10,6 +10,8 @@
 # and MAME built by mame/build.sh (or MAME=path/to/eps).
 # KEYS=file plays panel buttons and keys (format: mame/keys/*.txt).
 # RUN=dir picks the working directory (default build/mame/run).
+# BOOTROM=dir picks the boot ROM halves (default build/bootrom/unknown;
+# build/bootrom/r240 is ROM 2.40, as on the hardware we test on).
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DISK=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
@@ -21,7 +23,7 @@ RUN=${RUN:-$ROOT/build/mame/run}
 
 mkdir -p "$RUN/roms/eps"
 for h in h l; do
-    cp -u "$ROOT/build/bootrom/unknown/eps-$h.bin" "$RUN/roms/eps/eps-$h.bin"
+    cp "${BOOTROM:-$ROOT/build/bootrom/unknown}/eps-$h.bin" "$RUN/roms/eps/eps-$h.bin"
 done
 cd "$RUN"
 rm -f debug.log

@@ -1,5 +1,5 @@
 diff --git a/src/mame/ensoniq/esq5505.cpp b/src/mame/ensoniq/esq5505.cpp
-index ff89250e..04e163bd 100644
+index ff89250e..0615de0e 100644
 --- a/src/mame/ensoniq/esq5505.cpp
 +++ b/src/mame/ensoniq/esq5505.cpp
 @@ -248,6 +248,7 @@ public:
@@ -76,12 +76,22 @@ index ff89250e..04e163bd 100644
  			COMBINE_DATA(&m_ram[offset]);
  		else
  			LOG("Write to ROM: %x @ %x (fc=%x)\n", data, offset, m_maincpu->get_fc());
-@@ -611,11 +630,21 @@ void esq5505_state::eps_map(address_map &map)
+@@ -611,11 +630,31 @@ void esq5505_state::eps_map(address_map &map)
  	map(0x240000, 0x2400ff).rw(m_dmac, FUNC(hd63450_device::read), FUNC(hd63450_device::write));
  	map(0x280000, 0x28001f).rw(m_duart, FUNC(mc68681_device::read), FUNC(mc68681_device::write)).umask16(0x00ff);
  	map(0x2c0000, 0x2c0007).rw(m_fdc, FUNC(wd1772_device::read), FUNC(wd1772_device::write)).umask16(0x00ff);
 -	map(0x580000, 0x7fffff).ram();         // sample RAM?
-+	map(0x580000, 0x7fffff).ram().share("sampleram");   // 512K internal + expander
++	// 512K internal + expander. The EPS's sample RAM is 13 bits wide (D15-D3):
++	// bits 2-0 of every word read back as 0 (seen on hardware: code run
++	// from sample RAM crashes with ERROR 131). EPS_SAMPLERAM16=1 keeps all
++	// 16 bits (for builds that predate this finding).
++	map(0x580000, 0x7fffff).ram().lw16(NAME([this] (offs_t offset, u16 data, u16 mem_mask) {
++		static const char *const env = getenv("EPS_SAMPLERAM16");
++		static const bool wide = env && *env && *env != '0';
++		COMBINE_DATA(&m_sampleram[offset]);
++		if (!wide)
++			m_sampleram[offset] &= 0xfff8;
++	})).share("sampleram");
  	map(0xc00000, 0xc1ffff).rom().region("osrom", 0);
  	map(0xff0000, 0xffffff).ram().share("osram");
  }
@@ -99,7 +109,7 @@ index ff89250e..04e163bd 100644
  void esq5505_state::sq1_map(address_map &map)
  {
  	map(0x000000, 0x03ffff).rw(FUNC(esq5505_state::lower_r), FUNC(esq5505_state::lower_w));
-@@ -687,7 +716,22 @@ void esq5505_state::duart_output(uint8_t data)
+@@ -687,7 +726,22 @@ void esq5505_state::duart_output(uint8_t data)
  	{
  		if (m_system_type == EPS)
  		{
@@ -123,7 +133,7 @@ index ff89250e..04e163bd 100644
  		}
  		else
  		{
-@@ -850,6 +894,22 @@ void esq5505_state::eps(machine_config &config)
+@@ -850,6 +904,22 @@ void esq5505_state::eps(machine_config &config)
  	m_dmac->irq_callback().set_inputline(m_maincpu, M68K_IRQ_2);
  	m_dmac->dma8_read<0>().set(m_fdc, FUNC(wd1772_device::data_r));  // ch 0 = fdc, ch 1 = 340001 (ADC?)
  	m_dmac->dma8_write<0>().set(m_fdc, FUNC(wd1772_device::data_w));

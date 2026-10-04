@@ -23,6 +23,10 @@ OUT = os.path.join(ROOT, "build", "mame", "mutegroups")
 DRUMS = os.path.join(ROOT, "build", "sounds", "DRMSET09.GKH")
 C2, E2, G2 = 36, 40, 43
 KILLING = 8
+# The code-area builds run code from sample RAM, which the hardware can't
+# (13 bits wide; mame/eps.patch emulates that): these tests keep the
+# emulator's sample RAM 16 bits wide. mame/test_resident.py doesn't.
+os.environ.setdefault("EPS_SAMPLERAM16", "1")
 
 
 def sh(*cmd, **kw):

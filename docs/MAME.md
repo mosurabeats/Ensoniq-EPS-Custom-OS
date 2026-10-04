@@ -33,6 +33,16 @@ It builds only the Ensoniq driver (`SUBTARGET=eps`), but MAME's core is big,
 so the first build takes a long time (set `JOBS=` for more cores). Needs the SDL2, ALSA and fontconfig development
 packages. The boot ROM halves go in `build/bootrom/unknown/eps-h.bin` and
 `eps-l.bin` (docs/RESOURCES.md; MAME's set CRC `d8747420` / `382beac1`).
+Boot ROM 2.40 (the version on the EPS we test on) goes in
+`build/bootrom/r240/` under the same names: `eps_os_24_hi.bin` is
+`eps-h.bin`, `eps_os_24_lo.bin` is `eps-l.bin`. `BOOTROM=build/bootrom/r240
+mame/run.sh ...` boots with it.
+
+**Sample RAM is 13 bits wide**, as on the hardware (docs/ANALYSIS.md):
+`mame/eps.patch` drops bits 2-0 of every sample RAM write, so code run from
+sample RAM crashes like it does on a real EPS. `EPS_SAMPLERAM16=1` keeps all
+16 bits; the code-area tests (`test_mutegroups.py` and the tests built on
+it) set it, `test_resident.py` doesn't.
 
 ## Run
 
@@ -128,7 +138,21 @@ VOICES_FROM=59.9 VOICES_TO=66 KEYS=mame/keys/drums_disk.txt \
     mame/run.sh build/test/EPS249_DRUMS.img 67 mame/voices.lua
 ```
 
-## The mute group test
+## The resident mute group test (hardware build)
+
+```sh
+tools/fetch.sh sounds            # EPS factory drum disk 9 (TR 8O8) -> build/sounds
+python3 mame/test_resident.py    # a few minutes
+```
+
+The `EPS249_MUTE` build (`tools/mkresident.py`) with the TR 8O8 kit, on
+13-bit sample RAM, with boot ROM 2.40 and the other ROM. From the panel:
+MUTE GROUP = 1 with WS=ALL (`mame/keys/panel_mute.txt`), then C2, E2, G2:
+each cuts the one before, key-ups cut nothing. Without ▲: nothing is cut.
+With groups preset per wavesample (C2 and G2 in 1, E2 in 2): E2 leaves C2
+alone, G2 cuts C2 and not E2. 20 checks.
+
+## The mute group test (code area)
 
 ```sh
 tools/fetch.sh sounds            # EPS factory drum disk 9 (TR 8O8) -> build/sounds

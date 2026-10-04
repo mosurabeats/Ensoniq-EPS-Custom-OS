@@ -183,7 +183,61 @@ sample RAM that needs those bits worked there and fails on a real EPS:
   of each word: FULL LEVEL / ONE-SHOT values in low bytes and the undo
   tags in bits 3-0 of a note's last word need moving.
 
+MAME now emulates this (`mame/eps.patch`: sample RAM writes keep bits
+15-3). The code-area disks then fail in MAME too (ERROR 137, boot ROM 2.40)
+while the stock OS boots. `EPS_SAMPLERAM16=1` gives the old 16-bit RAM back
+for the code-area tests.
+
+### Resident build (everything in OS RAM)
+
+`tools/mkresident.py` (`tools/mkmutetest.sh`: `EPS249_MUTE`) puts mute
+groups and the MUTE GROUP parameter in OS RAM, which is 64 KB and full.
+The room comes from **boot-only code**: the OS entry (`0xFF171E`) is a list
+of `jsr`s to init routines that never run again once the main loop
+(`0xFF1774`) starts. Ours, at the end of boot:
+
+| Where | What | From |
+|---|---|---|
+| `0xFF1720-0xFF1763` | mute code (`src/resmute.s`, 68 bytes) | the entry's `jsr` list (`0xFF171E-0xFF176F`) |
+| `0xFF86E6-0xFF86F7` | 6 Amp index table: the 8 ROM entries, then ours | init routine `0xFF86E6` (`0xFF870A` is used later) |
+| `0xFF874C-0xFF875F` | MUTE GROUP descriptor (`08 00 000F 011E 8754`) and label | init routine `0xFF874C-0xFF8765` |
+| `0xFFC110` | 6 Amp page record: first/current `86E6`, last and end `86F6` | |
+| `0xFFAF92` | hook `jsr 0x1720.w` over `move.w 0x16BE.w,d0` | |
+
+Index tables, descriptors and labels in OS RAM from `0xFF8000` up work
+with no hooks at all (the OS takes words from `0x8000` up as OS RAM
+addresses, see Edit pages), so the menu is just data.
+
+The hook is in the layer's voice start (`0xFFAF54`), where `a3` is the new
+voice's wavesample record: the group is that wavesample's byte `0x11E`, a
+high byte, safe in 13-bit RAM. Every sounding voice (both lists) whose
+wavesample has the same group is cut with the OS's fast kill, except
+voices of the same key and instrument (the note's other layers; the OS
+retriggers a held key itself). This runs only when a voice really starts,
+so key-up layers with no voice cut nothing.
+
+**Getting the bytes there.** The boot ROM loads the OS file and jumps to
+the entry, so the payload has to be in the file somewhere that survives
+until the end of boot. Measured in MAME (boot ROM 2.40, a Lua write tap
+from the entry's first `jsr` to the `jsr` at `0xFF1770`): the zero runs in
+the file that nothing writes in that time are the bottoms of two stacks,
+`0xFFC994-0xFFCA3D` (init task stack, top `0xFFCA84`; the boot reaches
+`0xFFCA3E`) and `0xFFC8E8-0xFFC92B` (supervisor stack, top `0xFFC960`;
+interrupts reach `0xFFC92C`), plus kernel areas that interrupts or tasks
+use later (the message pool `0xFFCBEC-0xFFCFF4`, the voice task's stack
+`0xFFCA84-0xFFCAFB`): not safe. The last boot call, `jsr 0x1EF4.w` at
+`0xFF1770`, becomes `jsr 0xC994.w`: the late init (`src/lateinit.s`) at the
+bottom of the init stack, whose stack pointer is at the top (`0xFFCA84`)
+then, far above it. It copies the chunks in carrier 2 (`0xFFC8E8`, 52 bytes) and carrier 1 (after
+its own code, up to `0xFFCA2D`), then jumps to `0x1EF4`. Each carrier ends
+with a magic long ("MUTE"); if a stack has reached either, nothing is
+copied and the stock OS runs. The hook and page record are copied last.
+
 ### Code area (our code in sample RAM)
+
+> **Doesn't work on hardware**: code can't run from 13-bit sample RAM
+> (above). Kept as the emulator-only design the features were developed
+> on; they move to the resident build one at a time.
 
 Our resident code runs from the top of physical sample RAM (4 KB by
 default). It comes in two parts, built by `tools/mkcodearea.py`:

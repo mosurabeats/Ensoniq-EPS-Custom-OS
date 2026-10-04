@@ -22,7 +22,58 @@ python3 tools/mkcodearea.py build/eps_os_249.bin -o build/test/codearea_mute.jso
     --groups "1=1,2:A0-B3=2,3=1" --disk build/hfe/EPS249OS.hfe build/test/EPS249_MUTETEST.hfe
 ```
 
+## Mute groups test (`EPS249_MUTE`): the one to try now
+
+The earlier disks (`EPS249_CUSTOM`, `EPS249_DRUMS`, `EPS249_MUTETEST`, the
+`EPSDIAG` disks) run our code from sample memory, which the EPS can't do
+(its sample RAM is 13 bits wide, docs/ANALYSIS.md): they stop with
+"ERROR 131 - REBOOT". `EPS249_MUTE` keeps everything in the OS's own
+memory. It has **only mute groups** and the MUTE GROUP parameter to set
+them; nothing else is changed. Build it with `tools/mkmutetest.sh`
+(after `tools/fetch.sh os`). It's just the OS: add your own samples.
+
+In MAME, with 13-bit sample RAM like yours and with boot ROM 2.40, it
+boots, MUTE GROUP shows on the 6 Amp page, and notes cut each other as
+below (`mame/test_resident.py`).
+
+**1. Boot.** Select `EPS249_MUTE.hfe` on the Gotek and power on. It should
+boot exactly like the stock disk (LOADING SYSTEM, then the usual screen).
+If it shows an ERROR, write down the number and power off.
+
+**2. Find MUTE GROUP.** Sample or load a few sounds into one instrument
+(say kick, snare, closed hat, open hat on different keys). Press **Edit**,
+select the instrument, then **6 Amp**. You're on WS VOLUME. Press **◄**
+once: the display shows `MUTE GROUP=0`. (► from VOLUME MOD gets there
+too.) ▲ / ▼ or the slider change it, 0 (none) to 15.
+
+**3. Whole instrument in one group.** On the edit selection, pick
+**WS=ALL**, set MUTE GROUP to 1. Play two different keys one after the
+other: the second cuts the first. Play one key repeatedly: each hit cuts
+the last one's tail. Let go of a key: nothing gets cut.
+
+**4. Groups per sound.** Select one wavesample at a time: kick and snare
+MUTE GROUP 1, closed and open hat 2, everything else 0. Hit the kick, then
+the open hat: the kick keeps ringing (different groups). Let the open hat
+ring and hit the closed hat: the open hat stops. Hit the snare: the kick
+stops.
+
+**5. Across instruments.** Put a melodic sample on another instrument,
+WS=ALL, MUTE GROUP 3: every key cuts the one before (one note at a time),
+and it doesn't touch the drums. Give it group 1 instead and it cuts, and
+is cut by, the kick and snare.
+
+**6. Save.** SAVE INSTRUMENT, power off, boot `EPS249_MUTE` again, load
+the instrument: are the groups still set (step 2 shows them)? Then boot
+the **stock** OS and load the same instrument: does it load and play
+normally? (The stock OS ignores the group; it should not complain.)
+
+**Tell us:** which steps worked, anything odd on the display, and any
+ERROR number. A short phone video of step 4 helps.
+
 ## Test 1: code area + mute groups (`EPS249_MUTETEST`)
+
+> **Doesn't run on hardware** (ERROR 131: code in sample RAM). Kept for
+> the record; use `EPS249_MUTE` above.
 
 > **Use a disk built on or after the MAME fix.** The first test disks staged
 > the code where the OS keeps its task stacks, and they crash at boot
@@ -81,6 +132,10 @@ fell back to stock behaviour. Tell us; that's a disk-read problem, not a
 mute-group one.
 
 ## Boot disk (`EPS249_CUSTOM`) and drum disk (`EPS249_DRUMS`)
+
+> **Don't run on hardware yet** (ERROR 131: their code runs from sample
+> RAM). They work in MAME with `EPS_SAMPLERAM16=1`. The features move to
+> OS RAM one at a time, starting with `EPS249_MUTE` above.
 
 `EPS249_CUSTOM` is the one to use: OS 2.49 with our additions and nothing
 else, so the rest of the disk (about 700 KB) is free for your own sounds.
