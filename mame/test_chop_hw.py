@@ -12,6 +12,8 @@ ROM 2.40, as on the hardware.
   CANCEL: COMMAND ABORTED; nothing made.
 * mame/keys/chop_root.txt: wavesample 4 (keys 61-75, ROOT KEY 72): the
   slices start at its ROOT KEY, 72.
+* mame/keys/chop_eight.txt: ▼ ▼ to 8: the prompt and the result show 8
+  (the first hardware test showed " 0"), 8 slices.
 * mame/keys/chop_long.txt: LIVE KIT's wavesample 9, 66196 samples (more
   than 65535: the first hardware test cut such samples far too short):
   16 slices end to end over it, each about a 16th.
@@ -91,7 +93,8 @@ def main():
     T.sh(sys.executable, os.path.join(T.ROOT, "tools", "epstool.py"), "add",
          os.path.join(T.OUT, "swinghw_os.img"), T.DRUMS, "2", live)
     from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(4) as ex:
+    with ThreadPoolExecutor(5) as ex:
+        fe = ex.submit(run, disk, "chop_e", "chop_eight.txt")
         fd = ex.submit(run, live, "chop_d", "chop_long.txt", 51, (43, 49.5))
         fa = ex.submit(run, disk, "chop_a", "chop.txt")
         fb = ex.submit(run, disk, "chop_b", "chop_refuse.txt")
@@ -99,6 +102,7 @@ def main():
         (a_out, a_before, a_after), (b_out, b_before, b_after) = fa.result(), fb.result()
         c_out, c_before, c_after = fc.result()
         d_out, d_before, d_after = fd.result()
+        e_out, e_before, e_after = fe.result()
     ok = []
 
     def check(what, cond):
@@ -171,6 +175,10 @@ def main():
           and sd[0] == s9 and ed[-1] == e9 and all(ed[i] + 1 == sd[i + 1] for i in range(15))
           and all(abs(e - s + 1 - q9) <= 2 * 127 + 1 for s, e in zip(sd, ed))
           and [dict(I.key_map(d_after).get(39 + i, []))[0] for i in range(16)] == newd)
+    check("under 10: CHOP INTO  8 SLICES?, 8 SLICES CREATED, 8 made",
+          "CHOP INTO 12 SLICES?" in e_out and "CHOP INTO  8 SLICES?" in e_out
+          and " 8 SLICES CREATED" in e_out
+          and len(set(I.wavesamples(e_after)) - set(I.wavesamples(e_before))) == 8)
     print("   long slices:", list(zip(sd, ed)), "of", (s9, e9))
     print("   slices:", list(zip(starts, ends)))
     print("   voices:", {k: hex(v) for k, v in voices.items()}, "slice 2 at", hex(base + W[new[1]]))

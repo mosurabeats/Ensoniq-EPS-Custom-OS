@@ -185,14 +185,15 @@ and the kept take. 8 checks.
 python3 mame/test_chop_hw.py     # CHOP on the hardware build
 ```
 
-Four runs in parallel: `mame/keys/chop.txt` (the TR 8O8 kick chopped into
+Five runs in parallel: `mame/keys/chop.txt` (the TR 8O8 kick chopped into
 16 from the Wave page, then C#2) and `mame/keys/chop_refuse.txt` (WS=ALL:
 NO EDIT WS SELECTED; ENTER, CANCEL: COMMAND ABORTED), and
-`mame/keys/chop_root.txt` (slices from the ROOT KEY), and on a disk with
+`mame/keys/chop_root.txt` (slices from the ROOT KEY), `mame/keys/
+chop_eight.txt` (▼ ▼ to 8 slices), and on a disk with
 LIVE KIT as file 1, `mame/keys/chop_long.txt` (a 66196-sample
 wavesample). The Lua dumps
 instrument 1 before and after (`tools/instfile.py` reads it) and lists
-voice starts with their wavesample record. 18 checks.
+voice starts with their wavesample record. 19 checks.
 
 ```sh
 python3 mame/test_tune_hw.py     # TUNE on the Layer page (mame/keys/tune.txt)

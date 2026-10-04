@@ -86,9 +86,10 @@ chop:   movem.l d0-d7/a0-a6,-(sp)
         move.w  68(a2),C_SRC(a6)
 | "CHOP INTO nn SLICES?": ▲/▼, ENTER or CANCEL (as the OS's own YES/NO
 | prompt, 0xFFA6DA: shown again when the message timer runs out).
-1:      moveq   #0,d0
-        move.b  chop_n(pc),d0
-        move.b  slices(pc,d0.w),d0
+1:      lea     cv(pc),a6               | (again each time: the OS's message
+        moveq   #0,d0                   | loop, 0xFF1790, uses a6; the first
+        move.b  chop_n(pc),d0           | hardware test's ▼ wrote the count
+        move.b  slices(pc,d0.w),d0      | through it)
         move.w  d0,C_N(a6)
         lea     ask_n(pc),a0
         bsr     digits
@@ -310,9 +311,9 @@ digits: ext.l   d0
         add.b   #'0',d0
         cmpi.b  #'0',d0
         bne.s   1f
-        moveq   #' ',d0
-1:      move.b  d0,(a0)+
-        swap    d0
+        move.b  #' ',d0                 | (not moveq: the ones are in the
+1:      move.b  d0,(a0)+                | high word; the first hardware
+        swap    d0                      | test showed 8 SLICES as " 0")
         add.b   #'0',d0
         move.b  d0,(a0)
         rts

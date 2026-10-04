@@ -1,0 +1,29 @@
+# CHOP into fewer than 10 (the first hardware test showed 8 as " 0"): the
+# TR 8O8 kick, ENTER, ▼ ▼ (16 -> 12 -> 8), ENTER: "CHOP INTO  8 SLICES?",
+# " 8 SLICES CREATED". (Times as mame/keys/chop.txt.)
+13.5 8f 00    # Load
+13.65 0f 00
+14.5 a3 00    # Enter·Yes
+14.65 23 00
+15.5 82 00    # instrument 1: load TR 8O8
+15.65 02 00
+32.0 82 00    # select instrument 1
+32.15 02 00
+33.0 85 00    # Edit
+33.15 05 00
+33.5 91 00    # ►: the WS field
+33.65 11 00
+34.0 80 40    # C2: the kick's wavesample
+34.1 00 40
+34.5 a4 00    # 8 Wave
+34.65 24 00
+35.0 90 00    # ◄: CHOP
+35.15 10 00
+36.0 a3 00    # ENTER: CHOP INTO 16 SLICES?
+36.15 23 00
+36.5 8b 00    # ▼: 12
+36.65 0b 00
+37.0 8b 00    # ▼: 8
+37.15 0b 00
+38.0 a3 00    # ENTER: chop
+38.15 23 00

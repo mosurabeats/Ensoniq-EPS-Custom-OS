@@ -981,7 +981,7 @@ wrap and commit hooks point at the flags; qbuf saves it.)
   samples away; slices end where the next starts. The cut points are
   worked out before the first copy (copies go at the end of the instrument,
   so the source doesn't move, but other instruments may).
-MAME: `mame/test_chop_hw.py` (18 checks). Slices start at the source's
+MAME: `mame/test_chop_hw.py` (19 checks). Slices start at the source's
 ROOT KEY when that's inside its range (+0x112..+0x114), else at its lowest
 key (C2 at the lowest): first hardware test, a fresh sample over the whole
 keyboard chopped from C2 instead of middle C where it was put; and every
@@ -989,7 +989,10 @@ slice was the same click: the 32/16 division (`src/swing/divl.s`) lost the
 first step's remainder, so any sample over 65535 samples got slices about
 a 16th of the right length (all inside its first second). The MAME test
 had a 6112-sample kick; now also LIVE KIT's 66196-sample wavesample, and
-`tests/test_divl.py` checks the division up to 2^24.
+`tests/test_divl.py` checks the division up to 2^24. And at the prompt ▼
+wrote the count through a6, which the OS's message loop (`0xFF1790`)
+reloads: a6 is set again at the top of the loop now (MAME:
+`mame/keys/chop_eight.txt`).
 
 **TUNE** (`src/swing/tune.s`). Edit, 9 Layer, before HIT: semitones for
 the whole layer, -16..+15, kept in the layer record's spare byte +0x2F

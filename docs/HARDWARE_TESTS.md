@@ -198,7 +198,7 @@ hit and releases it. `mame/test_undo_hw.py` (8 checks): G2 played in pass
 2 then RECORD: gone from pass 3 on, the earlier D2 stays; RECORD early in
 pass 2 before playing anything: pass 1's D2 isn't heard in pass 2 and
 isn't kept; notes played after an undo are kept; the kept take has no
-undo marks left. `mame/test_chop_hw.py` (18 checks): the TR 8O8 kick chopped
+undo marks left. `mame/test_chop_hw.py` (19 checks): the TR 8O8 kick chopped
 into 16: 16 wavesamples on C2 up, end to end over the kick, cuts on the
 nearest zero crossings, C#2 plays slice 2; NO EDIT WS SELECTED with WS=ALL;
 CANCEL makes nothing; wavesample 4 (keys 61-75, ROOT KEY 72) slices from 72;
@@ -208,7 +208,11 @@ LIVE KIT's 66196-sample wavesample gets 16 even slices.
 slices started at C2, not middle C where the sample was (fixed: they start
 at the ROOT KEY), and every key played the same short click: samples over
 65535 samples (about 2 s) were cut into slices far too short (fixed: the
-division). Please try again with the new disk.
+division). Please try again with the new disk. Also: ▼ at the CHOP prompt
+went 16, 12, then showed "0": the OS's message loop changes a6, which the
+prompt used for its variables (the count was written through it; MAME
+crashed with ERROR 129), and counts under 10 printed their ones as 0.
+Both fixed; MAME now goes ▼ ▼ to 8.
 
 **HIT, first hardware test:** no setting changed the fresh sample, and it
 needed the key held. A new wavesample on the EPS is MODE = LOOP FORWARD
