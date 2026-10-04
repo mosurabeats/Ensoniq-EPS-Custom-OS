@@ -22,7 +22,7 @@ python3 tools/mkcodearea.py build/eps_os_249.bin -o build/test/codearea_mute.jso
     --groups "1=1,2:A0-B3=2,3=1" --disk build/hfe/EPS249OS.hfe build/test/EPS249_MUTETEST.hfe
 ```
 
-## Mute groups test (`EPS249_MUTE`): the one to try now
+## Mute groups test (`EPS249_MUTE`): passed on hardware
 
 The earlier disks (`EPS249_CUSTOM`, `EPS249_DRUMS`, `EPS249_MUTETEST`, the
 `EPSDIAG` disks) run our code from sample memory, which the EPS can't do
@@ -32,9 +32,12 @@ memory. It has **only mute groups** and the MUTE GROUP parameter to set
 them; nothing else is changed. Build it with `tools/mkmutetest.sh`
 (after `tools/fetch.sh os`). It's just the OS: add your own samples.
 
-In MAME, with 13-bit sample RAM like yours and with boot ROM 2.40, it
-boots, MUTE GROUP shows on the 6 Amp page, and notes cut each other as
-below (`mame/test_resident.py`).
+**Result (2026-10-04): every step below works on a real EPS** (OS 2.49
+from this disk, boot ROM 2.40, 2x expander, Gotek with HxC firmware):
+boot, MUTE GROUP on the 6 Amp page, WS=ALL and per-wavesample groups,
+groups across instruments, and SAVE INSTRUMENT / reload, including loading
+the saved instrument on the stock OS. It matches MAME (13-bit sample RAM,
+boot ROM 2.40, `mame/test_resident.py`).
 
 **1. Boot.** Select `EPS249_MUTE.hfe` on the Gotek and power on. It should
 boot exactly like the stock disk (LOADING SYSTEM, then the usual screen).

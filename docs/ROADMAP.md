@@ -40,7 +40,7 @@ style). A chopped break with all its keys in one group plays mono.
 | v1 | Groups set at build time: `mkcodearea.py --groups "1:C2=1,1:D2=1,1:F#2-A#2=2"` (instrument:keys=group; `I=G` for a whole instrument) | emulator-tested; **hardware test 1** |
 | v2 | Edit the group per wavesample/key from the front panel | needs the parameter system decoded |
 | v3 | Save it with the instrument (spare wavesample byte); CHOP sets it for all slices | needs the wavesample format (same work as CHOP) |
-| v4 | Per wavesample (byte `0x11E`), MUTE GROUP on the 6 Amp page, everything in OS RAM (`tools/mkresident.py`, `EPS249_MUTE`): the hardware build | emulator-tested on 13-bit sample RAM with boot ROM 2.40 (`mame/test_resident.py`); **hardware test next** |
+| v4 | Per wavesample (byte `0x11E`), MUTE GROUP on the 6 Amp page, everything in OS RAM (`tools/mkresident.py`, `EPS249_MUTE`): the hardware build | **works on hardware** (all six steps of docs/HARDWARE_TESTS.md, saving included); emulator: `mame/test_resident.py` |
 
 ### 2. Anti-aliasing filter OUT when sampling
 

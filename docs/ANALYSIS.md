@@ -233,6 +233,10 @@ its own code, up to `0xFFCA2D`), then jumps to `0x1EF4`. Each carrier ends
 with a magic long ("MUTE"); if a stack has reached either, nothing is
 copied and the stock OS runs. The hook and page record are copied last.
 
+Confirmed on a real EPS (boot ROM 2.40, 2x expander): boots, the menu
+works, groups cut as designed, and MUTE GROUP survives SAVE INSTRUMENT and
+reloading (the stock OS loads such an instrument fine).
+
 ### Code area (our code in sample RAM)
 
 > **Doesn't work on hardware**: code can't run from 13-bit sample RAM
