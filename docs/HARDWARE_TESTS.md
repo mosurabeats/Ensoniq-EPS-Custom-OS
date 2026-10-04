@@ -208,7 +208,14 @@ LIVE KIT's 66196-sample wavesample gets 16 even slices.
 slices started at C2, not middle C where the sample was (fixed: they start
 at the ROOT KEY), and every key played the same short click: samples over
 65535 samples (about 2 s) were cut into slices far too short (fixed: the
-division). Please try again with the new disk. `mame/test_tune_hw.py` (6 checks): TUNE ▼ ▼ ▲ on the
+division). Please try again with the new disk.
+
+**HIT, first hardware test:** no setting changed the fresh sample, and it
+needed the key held. A new wavesample on the EPS is MODE = LOOP FORWARD
+(checked in MAME: CREATE NEW WAVESAMPLE gives mode 2, soft velocity
+levels 64 against 127 hard), and ONE-SHOT leaves looping samples alone by
+design. Next: ONE-SHOT on CHOP's slices (NO LOOP), or with MODE =
+FORWARD-NO LOOP; FULL LEVEL on very soft hits. `mame/test_tune_hw.py` (6 checks): TUNE ▼ ▼ ▲ on the
 TR 8O8 shows +0, -1, -2, -1 and leaves every wavesample of layer 1 one
 semitone lower, layer 2 untouched.
 

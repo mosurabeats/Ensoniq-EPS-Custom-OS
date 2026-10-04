@@ -54,10 +54,13 @@ Sounds in the same group cut each other, like an open and a closed hi-hat.
 
 Edit, **9 Layer**, ◄: `HIT=NORMAL`. ▲ steps through:
 
-* **FULL LEVEL**: every hit at full velocity, however hard you play.
+* **FULL LEVEL**: every hit at full velocity, however hard you play. You
+  hear it on soft hits (a new sample's soft hits are about half level).
 * **ONE-SHOT**: letting go of the key doesn't stop the sound, so a
   sample without a loop plays to its end. Looping samples release as
-  usual.
+  usual. **A new sample on the EPS loops** (MODE = LOOP FORWARD on the
+  8 Wave page): set MODE = FORWARD-NO LOOP for ONE-SHOT to work on it.
+  CHOP's slices are already NO LOOP.
 * **FULL+1SHOT**: both.
 
 It's per layer. A drum kit or a chopped break usually has one layer, so
