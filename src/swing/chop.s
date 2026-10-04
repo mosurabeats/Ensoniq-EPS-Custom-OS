@@ -271,21 +271,7 @@ src_rec:
         lea     0(a1,d1.l),a3
         rts
 
-| d0.l / d3.w -> d0.l, remainder d1.w (d0 < 2^24).
-divl:   move.l  d0,d1
-        clr.w   d1
-        swap    d1
-        divu.w  d3,d1                   | high word
-        move.w  d1,-(sp)
-        swap    d1                      | remainder: high half of the next
-        move.w  d0,d1
-        divu.w  d3,d1
-        moveq   #0,d0
-        move.w  (sp)+,d0
-        swap    d0
-        move.w  d1,d0
-        swap    d1                      | remainder
-        rts
+        .include "divl.s"
 
 | a0 = the zero crossing (a sign change between two samples) nearest d4,
 | the earlier one of two as near, at most d7 (< 128) samples away; d4

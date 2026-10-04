@@ -12,6 +12,9 @@ ROM 2.40, as on the hardware.
   CANCEL: COMMAND ABORTED; nothing made.
 * mame/keys/chop_root.txt: wavesample 4 (keys 61-75, ROOT KEY 72): the
   slices start at its ROOT KEY, 72.
+* mame/keys/chop_long.txt: LIVE KIT's wavesample 9, 66196 samples (more
+  than 65535: the first hardware test cut such samples far too short):
+  16 slices end to end over it, each about a 16th.
 Needs what mame/test_mutegroups.py needs.
 """
 import os
@@ -33,7 +36,7 @@ end
 local function dump(tag)
   local f = io.open("%s_" .. tag .. ".bin", "wb")
   local b = base()
-  for i = 0, 0x40000 - 1 do f:write(string.char(prog:read_u8(b + i))) end
+  for i = 0, 0x80000 - 1 do f:write(string.char(prog:read_u8(b + i))) end
   f:close()
   print(string.format("BASE %%x", b))
 end
@@ -59,13 +62,14 @@ end)
 """
 
 
-def run(disk, name, keyfile):
+def run(disk, name, keyfile, secs=41, dump_at=(33, 39.5)):
     pre = os.path.join(T.OUT, name)
     lua = pre + ".lua"
-    open(lua, "w").write(LUA % pre)
+    open(lua, "w").write((LUA % pre).replace("t > 33 then", f"t > {dump_at[0]} then")
+                         .replace("t > 39.5 then", f"t > {dump_at[1]} then"))
     env = dict(os.environ, KEYS=os.path.join(T.ROOT, "mame", "keys", keyfile),
                RUN=os.path.join(T.OUT, "run_" + name), BOOTROM=H.ROM, EPS_SAMPLERAM16="0")
-    out = T.sh(os.path.join(T.ROOT, "mame", "run.sh"), disk, "41", lua, env=env)
+    out = T.sh(os.path.join(T.ROOT, "mame", "run.sh"), disk, str(secs), lua, env=env)
     before = open(pre + "_before.bin", "rb").read()
     after = open(pre + "_after.bin", "rb").read()
     return out, before, after
@@ -83,13 +87,18 @@ def sample(d, o, i):
 def main():
     os.makedirs(T.OUT, exist_ok=True)
     disk = H.make_disk()
+    live = os.path.join(T.OUT, "chop_live.img")       # LIVE KIT as file 1
+    T.sh(sys.executable, os.path.join(T.ROOT, "tools", "epstool.py"), "add",
+         os.path.join(T.OUT, "swinghw_os.img"), T.DRUMS, "2", live)
     from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(3) as ex:
+    with ThreadPoolExecutor(4) as ex:
+        fd = ex.submit(run, live, "chop_d", "chop_long.txt", 51, (43, 49.5))
         fa = ex.submit(run, disk, "chop_a", "chop.txt")
         fb = ex.submit(run, disk, "chop_b", "chop_refuse.txt")
         fc = ex.submit(run, disk, "chop_c", "chop_root.txt")
         (a_out, a_before, a_after), (b_out, b_before, b_after) = fa.result(), fb.result()
         c_out, c_before, c_after = fc.result()
+        d_out, d_before, d_after = fd.result()
     ok = []
 
     def check(what, cond):
@@ -150,6 +159,19 @@ def main():
           "16 SLICES CREATED" in c_out and len(newc) == 16
           and [dict(kmc.get(72 + i, []))[0] for i in range(16)] == newc
           and all(c_after[Wc[w] + 0x22] == 4 for w in newc))
+    Wd0, Wd = I.wavesamples(d_before), I.wavesamples(d_after)
+    newd = sorted(set(Wd) - set(Wd0))
+    src9 = d_after[Wd[9]:Wd[9] + 0x120]
+    s9, e9 = mp(src9, 0xF0), mp(src9, 0xF8)
+    rd = [d_after[Wd[w]:Wd[w] + 0x120] for w in newd]
+    sd, ed = [mp(r, 0xF0) for r in rd], [mp(r, 0xF8) for r in rd]
+    q9 = (e9 - s9 + 1) // 16
+    check("a 66196-sample wavesample: 16 slices end to end, each about a 16th",
+          "ERROR" not in d_out and len(newd) == 16 and e9 - s9 + 1 > 65535
+          and sd[0] == s9 and ed[-1] == e9 and all(ed[i] + 1 == sd[i + 1] for i in range(15))
+          and all(abs(e - s + 1 - q9) <= 2 * 127 + 1 for s, e in zip(sd, ed))
+          and [dict(I.key_map(d_after).get(39 + i, []))[0] for i in range(16)] == newd)
+    print("   long slices:", list(zip(sd, ed)), "of", (s9, e9))
     print("   slices:", list(zip(starts, ends)))
     print("   voices:", {k: hex(v) for k, v in voices.items()}, "slice 2 at", hex(base + W[new[1]]))
     sys.exit(0 if all(ok) else 1)
