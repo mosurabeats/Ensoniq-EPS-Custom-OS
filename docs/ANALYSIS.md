@@ -877,6 +877,40 @@ for a voice whose wavesample has that bit and doesn't loop (MODE `+0xEE`
 panel buttons every 40 ms: the UI loop never ran inside it, so ours can't
 be exchanged out from under a running hook.
 
+### Room for our code: what's left, and shrinking the OS
+
+What we have now, all measured on 13-bit sample RAM:
+* **Window region** (`0xFFE400-0xFFFFDF`, swapped in outside Command mode):
+  7136 bytes, 2408 used (swing, patch/unpatch, page tables). Real-time
+  hooks that only need to work in play/Edit mode (the sequencer ones) can
+  live here. This is where the next features go.
+* **Resident** (always there, for hooks that must also work in Command
+  mode: mute, HIT, the swap itself): boot-only code only. Used: `0xFF1720`
+  (mute 68 + HIT 8), `0xFF2990` (ml 38), `0xFF4E20` (ldr 32), `0xFF4EA8`
+  (HIT 26), `0xFF86E8` (swapx 30), `0xFF874C` (HIT 26). Left: `0xFF5214-
+  0xFF5223` (16) and a few 2-4 byte ends. Not usable: `0xFF17D4` and
+  `0xFF242A` (called at runtime, e.g. by the disk code), the zero runs in
+  `0xFF818C-0xFF844A` (kernel jump and vector tables with unused slots:
+  the ROM kernel indexes them).
+* **Sample RAM**: data only, one byte per word or values in bits 15-3.
+
+**Shrinking the stock OS** (asked on 2026-10-04) was looked at, not done:
+* Finding dead code safely is hard: much of the OS is reached through
+  tables (command records with handler words, page descriptors, task and
+  trap tables, message handlers), so a static call graph misses entry
+  points and a dynamic one (MAME coverage) can't see rarely used paths.
+  Removing a routine that turns out to be reachable crashes the EPS in
+  exactly the rare situation nobody tested.
+* Rewriting OS routines for size: hand-written 68000 code, already tight;
+  the gain per routine is small and every byte moved breaks absolute
+  references elsewhere.
+* The safe version of the idea is what Ensoniq did themselves: move
+  self-contained, rarely used resident code that is only reached through a
+  command record into an overlay (the record has an overlay field; the
+  dispatcher loads it). The overlay-3 slot is ours now, but a fifth slot
+  can be added to the OS file. Only worth doing if the resident budget
+  (not the window) runs out: the window covers everything planned so far.
+
 ### Unused and unfinished bits
 
 Signs of features that were started or planned but aren't in OS 2.49:
