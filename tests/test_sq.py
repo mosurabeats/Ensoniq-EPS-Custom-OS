@@ -36,13 +36,13 @@ class SqTest(unittest.TestCase):
         cls.eps = EPS(ROM, OS)
         cls.eps.write(ORG, cls.code)
 
-    def run_sq(self, words, grid, pct, scratch_end=SCRATCH_END):
+    def run_sq(self, words, grid, pct, scratch_end=SCRATCH_END, kill=0):
         e = self.eps
         data = b"".join(w.to_bytes(2, "big") for w in words)
         e.write(TAKE, data)
         end = TAKE + len(data)
         r = e.call(self.syms["sq"], max_insns=20_000_000, a0=TAKE, a1=end, a3=scratch_end,
-                   d1=grid, d2=swing.offset("mpc", pct, grid))
+                   d0=kill, d1=grid, d2=swing.offset("mpc", pct, grid) if grid else 0)
         new_end = r["a1"] & 0xFFFFFF
         out = e.read(TAKE, new_end - TAKE)
         return [int.from_bytes(out[i:i + 2], "big") for i in range(0, len(out), 2)]
@@ -95,6 +95,40 @@ class SqTest(unittest.TestCase):
         got = self.run_sq(w, 12, 50)
         self.assertEqual(got, ref(w, 12, 50))
         self.assertEqual([t for t, *_ in S.notes(got)], [1, 1])
+
+    def test_undo_kill(self):
+        """Notes tagged for undo (bit 3 of the last word) are dropped, with
+        or without quantize; untagged ones stay (reference: tag 8 killed)."""
+        rnd = random.Random(9)
+        for n in range(200):
+            evs = S.split(random_take(rnd, rnd.choice([192, 768])))
+            for ev in evs:
+                if S.is_note(ev) and rnd.random() < 0.3:
+                    ev[2] |= 8
+            words = [w for ev in evs for w in ev]
+            grid = rnd.choice([0, 12, 24])
+            pct = 58 if grid else 50
+            got = self.run_sq(words, grid, pct, kill=1)
+            exp = S.quantize_take(words, {i: (grid, "mpc", pct) for i in range(16)} if grid else {},
+                                  kill=1 << 8)
+            with self.subTest(n=n, grid=grid):
+                if got == words:
+                    self.assertEqual(S.decode(got), S.decode(exp))
+                else:
+                    self.assertEqual(got, exp)
+
+    def test_tags_kept_without_kill(self):
+        """Without undo, tagged notes are quantized like the others and keep
+        their tag (it marks the newest pass)."""
+        rnd = random.Random(4)
+        evs = S.split(realistic_pass(rnd, 8, 2))
+        for ev in evs:
+            if S.is_note(ev):
+                ev[2] |= 8
+        words = [w for ev in evs for w in ev]
+        got = self.run_sq(words, 12, 58)
+        self.assertEqual(got, ref(words, 12, 58))
+        self.assertTrue(all(ev[2] & 8 for ev in S.split(got) if S.is_note(ev)))
 
     def test_scratch_too_small(self):
         """No room after the take: it stays as it was."""

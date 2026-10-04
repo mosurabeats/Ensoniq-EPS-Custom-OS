@@ -871,6 +871,29 @@ test of the sustain pedal (`0xFFAE54`, `tst.b 20(a2)`) also says "hold"
 for a voice whose wavesample has that bit and doesn't loop (MODE `+0xEE`
 0 or 1): it plays to its end. Looping samples release as usual.
 
+**Loop undo** (one level). RECORD alone while loop recording over a
+track (`0xFF7ADC` in the transport handler, `clr.b 0xC430.w`; the press is
+then finished with `0xFF7B1E` so recording goes on) takes out the newest
+notes: this pass's, or if none were played yet in this pass, the last
+pass's. Bit 3 of a note's last word marks the newest pass with notes
+(playback ignores bits 3-0, `0xFF6882`; bits 2-0 don't exist in 13-bit
+sample RAM, bit 3 does). Flags U_NEW (this pass has notes) and U_KILL (1 =
+this pass's, 2 = the last pass's), both in the window. Hooks:
+* append (`0xFF6E56`, `lea 8(a4),a0`, appends the staged event): a note
+  played now gets bit 3 unless an undo is pending; the first one of a pass
+  clears bit 3 on everything already written (no longer the newest). A
+  note copied from the take being played loses bit 3 once this pass has
+  new notes or an undo is pending.
+* play (`0xFF638C` in the note handler, `move.b 3(a6),d1`): with U_KILL =
+  2, a note with bit 3 in the take being played is skipped (no voice, no
+  copy; its gap still counts: `0xFF637A`).
+* the wrap and commit hooks re-encode the take with sq's kill flag (`d0`):
+  notes with bit 3 are dropped. At the commit the kept take is untagged.
+A wrap with a key held can't re-encode (as for quantize): U_KILL becomes
+2 and the undone notes are skipped as they play. MAME:
+`mame/test_undo_hw.py`. (Found while testing it: sq uses `a4`, which the
+wrap and commit hooks point at the flags; qbuf saves it.)
+
 **Tasks.** The wrap hook runs in the sequencer task (user stack around
 `0xFFCB56`, task 3, entry `0xFF583A`), the commit and ldr/ml in the UI task
 (`0xFFCA84`). Measured in MAME with a 50 ms busy loop in the wrap hook and
@@ -881,9 +904,9 @@ be exchanged out from under a running hook.
 
 What we have now, all measured on 13-bit sample RAM:
 * **Window region** (`0xFFE400-0xFFFFDF`, swapped in outside Command mode):
-  7136 bytes, 2408 used (swing, patch/unpatch, page tables). Real-time
-  hooks that only need to work in play/Edit mode (the sequencer ones) can
-  live here. This is where the next features go.
+  7136 bytes, 2838 used (swing, loop undo, patch/unpatch, page tables).
+  Real-time hooks that only need to work in play/Edit mode (the sequencer
+  ones) can live here. This is where the next features go.
 * **Resident** (always there, for hooks that must also work in Command
   mode: mute, HIT, the swap itself): boot-only code only. Used: `0xFF1720`
   (mute 68 + HIT 8), `0xFF2990` (ml 38), `0xFF4E20` (ldr 32), `0xFF4EA8`

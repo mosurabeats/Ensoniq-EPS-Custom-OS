@@ -153,19 +153,34 @@ Everything on `EPS249_SWING`, plus:
   samples release as usual), and FULL+1SHOT (both). It's per layer: a kit
   or a chopped break sampled into one instrument has one layer, so it's the
   whole instrument. Saved with the instrument.
+* **Undo while loop recording** (one level, like the MPC60): press
+  RECORD on its own (not RECORD + PLAY) while loop recording over a track.
+  It takes out the notes you played so far in this pass; if you haven't
+  played anything new in this pass yet, it takes out the last pass's notes
+  instead (they stop sounding right away). One press per pass: a second
+  press in the same pass does nothing. No message on the display. Undone
+  notes are gone for good at the next loop wrap or at STOP + KEEP = NEW.
 * Behind the scenes: the borrowed part of the OS is now the whole
   sequence-commands overlay except its first kilobyte (room for about 7 KB
-  of our code, 2.4 KB used), and our code steps aside whenever you're in
+  of our code, 2.8 KB used), and our code steps aside whenever you're in
   Command mode or sampling, so those always see the stock OS.
 
 MAME (13-bit sample RAM, boot ROM 2.40, `mame/test_swing_hw.py`, 16
 checks): everything on the swing list, plus HIT = FULL+1SHOT plays a soft
 snare at velocity 127 and lets it ring past the key-up; NORMAL plays it as
-hit and releases it.
+hit and releases it. `mame/test_undo_hw.py` (8 checks): G2 played in pass
+2 then RECORD: gone from pass 3 on, the earlier D2 stays; RECORD early in
+pass 2 before playing anything: pass 1's D2 isn't heard in pass 2 and
+isn't kept; notes played after an undo are kept; the kept take has no
+undo marks left.
 
 **Try:** the swing test above, then HIT: set FULL+1SHOT on a drum kit's
 layer and play soft and hard, short taps on long samples. Tell us whether
-it feels right, and whether a sample with a loop still releases.
+it feels right, and whether a sample with a loop still releases. Then
+undo: loop record a beat, play a wrong hit and press RECORD in the same
+pass (it shouldn't come round again); play a pass, then press RECORD at
+the start of the next one before playing (that pass's notes should go
+silent). Keep with NEW and play the sequence back.
 
 ## Test 1: code area + mute groups (`EPS249_MUTETEST`)
 

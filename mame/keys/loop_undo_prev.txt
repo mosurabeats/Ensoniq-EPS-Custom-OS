@@ -1,0 +1,35 @@
+# Loop undo of the last pass: record a 1-bar kick, then loop-record over it
+# (LOOPED, set by the test's Lua at 36 s): D2 in pass 1; early in pass 2,
+# before anything new is played, RECORD (undo: pass 1's D2, not heard at
+# about 40.9 s); then A#2 in pass 2, kept. Passes start about 37.25, 39.65,
+# 42.05 s (2.4 s a bar). Buttons: RECORD 3, PLAY 29, STOP 23, ENTER 35.
+10.5 8f 00    # LOAD
+10.65 0f 00
+11.5 a3 00    # ENTER
+11.65 23 00
+12.5 82 00    # instrument 1: load TR 8O8
+12.65 02 00
+29.0 82 00    # select instrument 1
+29.15 02 00
+30.0 83 00    # hold RECORD
+30.2 9d 00    # + PLAY: record a new sequence
+30.35 1d 00
+30.5 03 00
+31.0 80 40    # C2 (kick)
+31.1 00 40
+33.0 97 00    # STOP: "001 BARS - KEEP TRACK?"
+33.15 17 00
+34.0 a3 00    # ENTER: keep (1 bar)
+34.15 23 00
+37.0 83 00    # hold RECORD
+37.2 9d 00    # + PLAY: loop recording
+37.35 1d 00
+37.5 03 00
+38.5 82 60    # pass 1: D2 (snare)
+38.6 02 40
+39.9 83 00    # pass 2, nothing played yet: RECORD -> undo pass 1's D2
+40.05 03 00
+40.5 8a 60    # pass 2: A#2 (closed hat), kept
+40.6 0a 40
+45.0 97 00    # STOP
+45.15 17 00

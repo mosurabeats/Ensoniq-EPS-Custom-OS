@@ -22,7 +22,9 @@
 | none.
 |
 | In:  a0 = take, a1 = its end, a3 = end of the free memory after it,
-|      d1.w = grid (ticks), d2.w = swing offset (added on odd lines).
+|      d1.w = grid (ticks; 0: no quantize), d2.w = swing offset (added on
+|      odd lines), d0.b != 0: drop the notes tagged for undo (bit 3 of
+|      their last word: src/swing/window.s, undo).
 | Out: a1 = new end (as it was if nothing moved, or on overflow).
 | Uses all registers but a7.
 
@@ -35,6 +37,7 @@
         .text
         .globl  sq
 sq:     lea     sqv(pc),a5
+        move.b  d0,V_KILL(a5)
         move.l  sp,V_SP(a5)             | (overflow: back to the caller)
         move.l  a1,V_OUT0(a5)
         move.l  a3,V_LIM(a5)
@@ -50,11 +53,14 @@ sq:     lea     sqv(pc),a5
         movea.l a0,a6
 10:     cmpa.l  a1,a6
         bhs.s   20f
+        movea.l a6,a3
         bsr     evnext
         cmpi.w  #C_TIME,d4
         beq.s   14f
         cmpi.w  #0xB0,d4
         bcc.s   12f
+        bsr     killed                  | (an undone note isn't there)
+        bne.s   14f
         st      V_SEEN(a5)
         bra.s   14f
 12:     tst.b   V_SEEN(a5)
@@ -81,6 +87,8 @@ sq:     lea     sqv(pc),a5
         bsr     evnext
         cmpi.w  #0xB0,d4
         bcc.s   24f
+        bsr     killed
+        bne.s   24f
         cmp.l   V_FLOOR(a5),d7
         beq.s   24f
         move.l  d7,d0
@@ -138,6 +146,11 @@ sq:     lea     sqv(pc),a5
 33:     move.l  d7,d0                   | d0 = new time
         cmpi.w  #0xB0,d4
         bcc.s   35f
+        bsr     killed
+        beq.s   36f
+        st      V_MOVED(a5)             | undone: left out
+        bra.s   38f
+36:
         cmp.l   V_FLOOR(a5),d7
         beq.s   35f
         bsr     quantize
@@ -319,6 +332,12 @@ emit1:  movem.l d0-d3/a2-a3,-(sp)
 7:      movem.l (sp)+,d0-d3/a2-a3
         rts
 
+| Z clear if the note at a3 is to be dropped (undo). Keeps the others.
+killed: tst.b   V_KILL(a5)
+        beq.s   9f
+        btst    #3,5(a3)                | its last word's bit 3
+9:      rts
+
 | The event at a6: d0.w = first word, d4.w = code, d3.l = length in bytes,
 | d5.l = its gap; a6 = the next event. Uses d6.
 evnext: move.l  a6,d3
@@ -363,6 +382,8 @@ evnext: move.l  a6,d3
 | away (e' = offset if s is even). Ties go to the later line, as in
 | tools/swing.py quantize() at strength 100. Out: d0. Keeps the others.
 quantize:
+        tst.w   d1
+        beq.s   99f                     | no grid: as played
         movem.l d3-d6,-(sp)
         move.l  d0,d3
         divu.w  d1,d3                   | d3 = r:s
@@ -391,11 +412,11 @@ quantize:
         bra.s   9f
 4:      add.l   d5,d0                   | line s
 9:      movem.l (sp)+,d3-d6
-        rts
+99:     rts
 
 | Variables (a5) and buffers.
         .balign 2
-sqv:    .space  48
+sqv:    .space  50
         .equ    V_SP,    0
         .equ    V_OUT0,  4
         .equ    V_LIM,   8
@@ -414,5 +435,6 @@ sqv:    .space  48
         .equ    V_PREV,  45
         .equ    V_WDONE, 46
         .equ    V_MOVED, 47
+        .equ    V_KILL,  48
 sqwrap: .space  NWMAX*4
 sqbuf:  .space  NBMAX*8

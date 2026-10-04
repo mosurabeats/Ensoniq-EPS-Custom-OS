@@ -168,7 +168,18 @@ this OS boots slower) with QUANTIZE 1/16: the take at each wrap and the one
 kept with KEEP = NEW (ENTER at the prompt) are on the grid; again with
 SWING% 58 set on the Seq·Song page: odd 16ths 2 ticks late; mute groups from
 the 6 Amp page; Command, CREATE NEW SEQUENCE (overlay 0 back from the
-store, no disk read), then QUANTIZE on the page again. 12 checks.
+store, no disk read), then QUANTIZE on the page again; HIT on the Layer
+page (`mame/keys/panel_inst.txt`). 16 checks.
+
+```sh
+python3 mame/test_undo_hw.py     # loop undo on the hardware build
+```
+
+Two runs in parallel: `mame/keys/loop_undo.txt` (G2 played in pass 2,
+then RECORD: gone from pass 3 on; a second RECORD in pass 3 does nothing)
+and `mame/keys/loop_undo_prev.txt` (RECORD early in pass 2 before playing:
+pass 1's D2 is skipped in pass 2 and not kept). The Lua lists voice starts
+and the kept take. 8 checks.
 
 ## The mute group test (code area)
 

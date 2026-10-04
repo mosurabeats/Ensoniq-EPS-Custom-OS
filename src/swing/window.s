@@ -165,7 +165,19 @@ hooks:  .word   0x6746                  | the loop wrap: jsr 0x6AD6.w
         .long   0x4EB874F2
         .word   0x4EB8
         aw      stop_hook
-        .equ    NHOOKS, 2
+        .word   0x6E56                  | append to the take: lea 8(a4),a0
+        .long   0x41EC0008
+        .word   0x4EB8
+        aw      append_hook
+        .word   0x638C                  | note playback: move.b 3(a6),d1
+        .long   0x122E0003
+        .word   0x4EB8
+        aw      play_hook
+        .word   0x7ADC                  | RECORD pressed: clr.b 0xC430.w
+        .long   0x4238C430
+        .word   0x4EB8
+        aw      rec_hook
+        .equ    NHOOKS, 5
 
 | The Layer page (Edit, 9 Layer): its ROM entries, then HIT: NORMAL, FULL
 | LEVEL (velocity 127), ONE-SHOT (no release at key-up for samples that
@@ -249,35 +261,184 @@ swing_label:
 wrap_hook:
         jsr     0x6AD6.w                | the call we replaced
         movem.l d0-d7/a0-a6,-(sp)
-        bsr.s   settings
-        beq.s   9f
-        tst.w   OPEN_NOTES.w
-        bne.s   9f
+        lea     undo(pc),a4
+        bsr     settings
+        bne.s   1f
+        tst.b   U_KILL(a4)
+        beq.s   8f                      | no quantize, nothing undone
+1:      tst.w   OPEN_NOTES.w
+        bne.s   7f
         move.l  WRITE_PTR.w,d3          | end of the finished take
-        move.l  BUF_A.w,d4
+        bsr     wbuf
+        move.b  U_KILL(a4),d0
+        bsr     qbuf
+        clr.b   U_KILL(a4)              | the undone notes are gone
+        bra.s   8f
+7:      tst.b   U_KILL(a4)              | a key held: no re-encode; undone
+        beq.s   8f                      | notes left in the take are skipped
+        move.b  #2,U_KILL(a4)           | as it plays next time
+8:      clr.b   U_NEW(a4)               | a new pass
+9:      movem.l (sp)+,d0-d7/a0-a6
+        rts
+
+| d4 = offset of the buffer the take ending at offset d3 is in.
+wbuf:   move.l  BUF_A.w,d4
         cmp.l   BUF_B.w,d3
         bcs.s   1f
         move.l  BUF_B.w,d4              | it's in buffer B
-1:      bsr.s   qbuf
-9:      movem.l (sp)+,d0-d7/a0-a6
-        rts
+1:      rts
 
 | At the commit (0xFF6B7C), after 0x74F2 closed held notes: a LOOPED take
 | kept with NEW (it's in buffer A). The OS's "tst.b 0x815E" follows.
 stop_hook:
         jsr     0x74F2.w                | the call we replaced
+        movem.l d0-d7/a0-a6,-(sp)
+        lea     undo(pc),a4
         tst.b   KEEP_NEW.w
-        beq.s   9f
+        beq.s   8f
+        cmpi.b  #LOOPED,REC_MODE.w
+        bne.s   8f
+        bsr     settings                | quantize, and leave out what was
+        move.l  WRITE_PTR.w,d3          | undone
+        move.l  BUF_A.w,d4
+        move.b  U_KILL(a4),d0
+        bsr     qbuf
+        movea.l SEQ_BASE.w,a0           | the track gets the notes untagged
+        movea.l a0,a1
+        adda.l  BUF_A.w,a0
+        lea     TAKE_HDR(a0),a0
+        adda.l  WRITE_PTR.w,a1
+        bsr     untag
+8:      clr.w   U_NEW(a4)               | (U_NEW, U_KILL) a new recording
+9:      movem.l (sp)+,d0-d7/a0-a6
+        rts
+
+| ------------------------------------------------------------------ undo
+| RECORD pressed while loop recording takes out the newest notes: the ones
+| played so far in this pass, or if there are none, the last pass's. One
+| level, like the MPC60. Bit 3 of a note's last word marks the newest pass
+| with notes (playback ignores bits 3-0: 0xFF6882; bits 2-0 don't exist in
+| 13-bit sample RAM, bit 3 does). Notes played after an undo aren't marked.
+| Undone notes: the ones in the take being written go at the next wrap
+| (sq drops them); the last pass's still in the take being played are
+| skipped as it plays (no voice, no copy). U_KILL: 1 = this pass's, 2 = the
+| last pass's. docs/ANALYSIS.md -> Swing build.
+        .equ    U_NEW,      0           | this pass has notes played
+        .equ    U_KILL,     1
+        .equ    REC_FLAGS,  0x815A      | bit 1: recording a new sequence
+        .equ    SEQ_STATE,  0x8028
+        .equ    ST_RECORDING, 0x58D6
+        .equ    ST_WRAP,    0x5942
+        .equ    SAVED_STATE, 0x802A
+        .equ    NOTE_GAP,   0x637A      | the note handler's last steps
+        .equ    MSG_DONE,   0x7B1E      | trap #4 (message done); rts
+
+| 0xFF6E56, the routine that appends a staged event (a4 + 8) to the take
+| being written; the OS's "ori.w #0x8000,(a0)" follows (bit 15 of the
+| first word is still clear for a note played now, set for one copied
+| from the take being played).
+append_hook:
+        lea     8(a4),a0                | the displaced lea
         cmpi.b  #LOOPED,REC_MODE.w
         bne.s   9f
-        movem.l d0-d7/a0-a6,-(sp)
-        bsr.s   settings
-        beq.s   8f
-        move.l  WRITE_PTR.w,d3
-        move.l  BUF_A.w,d4
-        bsr.s   qbuf
-8:      movem.l (sp)+,d0-d7/a0-a6
+        move.w  (a0),d0
+        lsr.w   #4,d0
+        andi.w  #0xFF,d0
+        cmpi.w  #0xB0,d0
+        bhs.s   9f                      | not a note
+        movem.l d0-d7/a1-a6,-(sp)
+        lea     undo(pc),a4
+        tst.w   (a0)
+        bpl.s   1f
+        tst.w   (a4)                    | copied: newer notes this pass, or
+        beq.s   8f                      | an undo: no longer the newest
+        andi.w  #0xFFF7,4(a0)
+        bra.s   8f
+1:      andi.w  #0xFFF7,4(a0)           | played now
+        tst.b   U_KILL(a4)
+        bne.s   8f                      | after an undo: kept, unmarked
+        ori.w   #8,4(a0)
+        tst.b   U_NEW(a4)
+        bne.s   8f
+        st      U_NEW(a4)               | the first of this pass: what's
+        move.l  a0,-(sp)                | written so far is no longer the
+        move.l  WRITE_PTR.w,d3          | newest
+        bsr     wbuf
+        movea.l SEQ_BASE.w,a0
+        movea.l a0,a1
+        adda.l  d4,a0
+        lea     TAKE_HDR(a0),a0
+        adda.l  d3,a1
+        bsr.s   untag
+        movea.l (sp)+,a0
+8:      movem.l (sp)+,d0-d7/a1-a6
 9:      rts
+
+| Clear bit 3 of the notes from a0 to a1. Uses d0, a0.
+untag:  cmpa.l  a1,a0
+        bhs.s   9f
+        move.w  (a0)+,d0
+        bpl.s   untag                   | not an event's first word
+        lsr.w   #4,d0
+        andi.w  #0xFF,d0
+        cmpi.w  #0xB0,d0
+        bhs.s   untag
+        andi.w  #0xFFF7,2(a0)           | a note: its last word
+        addq.l  #4,a0
+        bra.s   untag
+9:      rts
+
+| 0xFF638C in the note playback handler (a4 = the event, its words from
+| +8; the OS did "moveq #0,d1"): the last pass's undone notes are skipped:
+| no voice, no copy into the take being written; only their gap counts
+| (0xFF637A, whose rts goes back to the handler's caller).
+play_hook:
+        move.b  3(a6),d1                | the displaced instruction
+        cmpi.b  #2,undo+U_KILL
+        bne.s   9f
+        btst    #3,13(a4)
+        beq.s   9f
+        bsr.s   loop_rec
+        bne.s   9f
+        addq.l  #4,sp
+        jmp     NOTE_GAP.w
+9:      rts
+
+| 0xFF7ADC: RECORD (transport button 0) pressed (a5 = the message). While
+| loop recording over a track: undo, and the press is done with.
+rec_hook:
+        clr.b   0xC430.w                | the displaced instruction
+        bsr.s   loop_rec
+        bne.s   9f
+        move.l  a4,-(sp)
+        lea     undo(pc),a4
+        tst.b   U_KILL(a4)
+        bne.s   8f                      | one level
+        move.b  #2,U_KILL(a4)
+        tst.b   U_NEW(a4)
+        beq.s   8f                      | nothing played yet: the last pass
+        move.b  #1,U_KILL(a4)           | this pass's
+        sf      U_NEW(a4)
+8:      movea.l (sp)+,a4
+        move.l  #MSG_DONE,(sp)
+9:      rts
+
+| Z set if loop recording over a track: LOOPED, recording (0x58D6) or at
+| a wrap (0x5942, going back to 0x58D6), not a new sequence.
+loop_rec:
+        cmpi.b  #LOOPED,REC_MODE.w
+        bne.s   9f
+        btst    #1,REC_FLAGS.w
+        bne.s   9f
+        cmpi.w  #ST_RECORDING,SEQ_STATE.w
+        beq.s   9f
+        cmpi.w  #ST_WRAP,SEQ_STATE.w
+        bne.s   9f
+        cmpi.w  #ST_RECORDING,SAVED_STATE.w
+9:      rts
+
+        .balign 2
+undo:   .byte   0, 0                    | U_NEW, U_KILL
 
 | Quantize the take in the buffer at offset d4 (end offset d3), then move
 | the write pointer to its new end. d1/d2: grid, offset.
@@ -286,9 +447,9 @@ qbuf:   movea.l SEQ_BASE.w,a2
         lea     0(a2,d3.l),a1
         lea     0(a2,d4.l),a3
         adda.l  BUF_SIZE.w,a3
-        move.l  a2,-(sp)
+        movem.l a2/a4,-(sp)             | sq uses a4 (the callers' undo)
         bsr     sq
-        move.l  (sp)+,d0
+        movem.l (sp)+,d0/a4
         suba.l  d0,a1
         move.l  a1,WRITE_PTR.w
         rts
