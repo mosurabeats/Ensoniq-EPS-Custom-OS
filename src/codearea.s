@@ -26,7 +26,11 @@ checksum:
 | "jsr entry.l; nop" into each hook site whose 8 stock bytes still match
 | (a site that differs, say from another patch, is left alone). Uses
 | d0, d1, a0-a2 (the loader saves everything).
-init:   lea     hooks(pc),a0
+init:
+.ifdef BARE
+        rts                             | test build: load the image, hook nothing
+.endif
+        lea     hooks(pc),a0
 1:      move.l  (a0)+,d0
         beq.s   9f
         movea.l d0,a1

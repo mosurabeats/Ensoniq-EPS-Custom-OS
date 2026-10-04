@@ -168,6 +168,21 @@ and overlay 0 uses it for sequencer memory (`0xFFE0EE`). The OS reads
 `0xFF1672` as an available-size figure (minimums 656, 224), never as a fixed
 total.
 
+### Sample RAM is 13 bits wide (found on hardware)
+
+The internal sample RAM is 13 DRAMs (41256, 256K x 1) on data lines
+DA19-DA7 (schematic 4010007501): CPU data bits 15-3. Bits 2-0 of every
+word don't exist. All 322,816 sample words in the factory instrument files
+have them at 0. MAME models the RAM as 16 bits wide, so anything we put in
+sample RAM that needs those bits worked there and fails on a real EPS:
+* **Code can't run from sample RAM.** The code area disks give ERROR 131
+  (illegal instruction) on a real EPS (OS 2.49, boot ROM 2.40, 2x
+  expander); the loader's own stack is up there too. Our code has to move
+  to OS RAM.
+* Data in sample RAM (instrument data, sequences) can only use bits 15-3
+  of each word: FULL LEVEL / ONE-SHOT values in low bytes and the undo
+  tags in bits 3-0 of a note's last word need moving.
+
 ### Code area (our code in sample RAM)
 
 Our resident code runs from the top of physical sample RAM (4 KB by

@@ -171,14 +171,16 @@ def swing_default(setting):
     return QUANT_GRIDS.index(grid), pct
 
 
-def build_image(groups, swing_settings=None, undo=False, pages=False):
+def build_image(groups, swing_settings=None, undo=False, pages=False, bare=False):
     """Stage 2 (src/codearea.s) at offset 0, mute table (and swing table)
     filled in and the checksum set so all words sum to 0. The loop-record
     code (src/looprec.s: swing and undo) is in it with swing settings or
     undo. Returns (bytes, symbols)."""
     looprec = bool(swing_settings) or undo or pages
-    code, syms = mkhook.assemble(IMAGE_SRC, 0, "image", {"LOOPREC": 1 if looprec else 0,
-                                                          "PAGES": 1 if pages else 0})
+    defs = {"LOOPREC": 1 if looprec else 0, "PAGES": 1 if pages else 0}
+    if bare:
+        defs["BARE"] = 1
+    code, syms = mkhook.assemble(IMAGE_SRC, 0, "image", defs)
     if pages and any(groups.values()):
         raise ValueError("with --pages, mute groups are per wavesample (the 6 Amp page, "
                          "saved with the instrument): use epstool.py groups for a disk's files")
@@ -212,12 +214,12 @@ AUTO_KEEP = {"addr": "0xFF2702", "expect": "31fc0002c2ec0c380000",
 
 
 def build(os_bin, groups="", area_size=None, auto_keep=False, swing_settings=None, undo=False,
-          pages=False):
+          pages=False, bare=False):
     if not isinstance(groups, dict):
         groups = parse_groups(groups)
     if isinstance(swing_settings, str):
         swing_settings = parse_swing(swing_settings)
-    image, isyms = build_image(groups, swing_settings, undo, pages)
+    image, isyms = build_image(groups, swing_settings, undo, pages, bare)
     blocks = (len(image) + 511) // 512
     if blocks > IMAGE_MAX_BLOCKS:
         raise ValueError(f"image is {len(image)} bytes, the overlay-3 slot holds "
@@ -270,6 +272,8 @@ def main():
                          "(on with --swing too)")
     ap.add_argument("--pages", action="store_true",
                     help="our parameters on the edit pages (MUTE GROUP on the 6 Amp page)")
+    ap.add_argument("--bare", action="store_true",
+                    help="test build: the loader reads and checks the image but installs no hooks")
     ap.add_argument("--auto-keep", action="store_true",
                     help="no KEEP = OLD NEW prompt after recording: keep NEW")
     ap.add_argument("--area", type=int, default=AREA_SIZE,
@@ -279,7 +283,8 @@ def main():
     os_bin = open(a.os, "rb").read()
     groups = parse_groups(a.groups)
     swing_settings = parse_swing(a.swing)
-    patch, info = build(os_bin, groups, a.area, a.auto_keep, swing_settings, a.undo, a.pages)
+    patch, info = build(os_bin, groups, a.area, a.auto_keep, swing_settings, a.undo, a.pages,
+                        a.bare)
     json.dump(patch, open(a.out, "w"), indent=1)
     used = sorted({g for g in groups.values() if g})
     print(f"{a.out}: loader {info['install_end'] - STAGE}/{STACK_LO - STAGE} bytes, "
