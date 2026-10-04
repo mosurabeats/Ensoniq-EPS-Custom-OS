@@ -64,15 +64,15 @@ that's the whole instrument. Saved with the instrument.
 ## Loop recording with QUANTIZE and SWING% (MPC timing correct)
 
 1. Edit, **Seq·Song**, ◄ once: `SWING%=50`, ◄ again:
-   `QUANTIZE=1/16`.
-   * QUANTIZE: 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T, OFF
+    `QUANTIZE=1/16`.
+    * QUANTIZE: 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T, OFF
      (OFF = the stock EPS).
-   * SWING%: 50 (straight) to 75. It swings only the 1/8 and 1/16 grids:
+    * SWING%: 50 (straight) to 75. It swings only the 1/8 and 1/16 grids:
      every second 8th or 16th comes in later.
-   * Try 54-58% for a light shuffle and 62-67% for a heavy one. The
+    * Try 54-58% for a light shuffle and 62-67% for a heavy one. The
      SP-1200's settings are 54, 58, 63, 67 and 71 here too.
 2. Make a 1- or 2-bar sequence. On the same page set **RECORD MODE =
-   LOOPED**.
+    LOOPED**.
 3. Hold **RECORD**, press **PLAY**, and play. What you play snaps to the
    grid from the next time round the loop. A hit played just before the
    loop point moves to the start.
@@ -140,5 +140,5 @@ Things to know:
 * **If you see an ERROR:** write down the number and what you just did,
   then power off and boot again.
 
-Details and test notes: [HARDWARE_TESTS.md](HARDWARE_TESTS.md). How it
-works: [ANALYSIS.md](ANALYSIS.md).
+Details and test notes: docs/HARDWARE_TESTS.md in the project. How it
+works: docs/ANALYSIS.md.
