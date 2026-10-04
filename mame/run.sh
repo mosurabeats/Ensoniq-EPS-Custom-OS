@@ -10,6 +10,7 @@
 # and MAME built by mame/build.sh (or MAME=path/to/eps).
 # KEYS=file plays panel buttons and keys (format: mame/keys/*.txt).
 # RUN=dir picks the working directory (default build/mame/run).
+# WAV=file.wav records the audio output.
 # BOOTROM=dir picks the boot ROM halves (default build/bootrom/unknown;
 # build/bootrom/r240 is ROM 2.40, as on the hardware we test on).
 set -e
@@ -29,7 +30,7 @@ cd "$RUN"
 rm -f debug.log
 ESQPANEL_LOG=1 ESQPANEL_KEYS=$KEYS "$MAME" eps -rompath roms -flop "$DISK" -video none -sound none \
     -nothrottle -seconds_to_run "$SECS" -skip_gameinfo -debug -debugger none \
-    -autoboot_script "$LUA" -debuglog >stdout.log 2>panel.log || true
+    -autoboot_script "$LUA" -debuglog ${WAV:+-wavwrite "$WAV"} >stdout.log 2>panel.log || true
 python3 "$ROOT/mame/screens.py" panel.log
 grep -v -e '^$' -e '^MAME debugger' -e '^Currently targeting' debug.log 2>/dev/null || true
 grep -v -e '^$' -e 'control code' -e '^Average speed' stdout.log || true

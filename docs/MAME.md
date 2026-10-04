@@ -150,7 +150,11 @@ The `EPS249_MUTE` build (`tools/mkresident.py`) with the TR 8O8 kit, on
 MUTE GROUP = 1 with WS=ALL (`mame/keys/panel_mute.txt`), then C2, E2, G2:
 each cuts the one before, key-ups cut nothing. Without ▲: nothing is cut.
 With groups preset per wavesample (C2 and G2 in 1, E2 in 2): E2 leaves C2
-alone, G2 cuts C2 and not E2. 20 checks.
+alone, G2 cuts C2 and not E2; the cut voice is gone within 35 ms. 22
+checks.
+
+`WAV=out.wav mame/run.sh ...` records MAME's audio, but the EPS driver's
+output is silent for now: judge sound (clicks, fades) on hardware.
 
 ## The mute group test (code area)
 

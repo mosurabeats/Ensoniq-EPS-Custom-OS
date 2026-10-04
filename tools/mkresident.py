@@ -36,6 +36,7 @@ HOOK_AT, HOOK_STOCK = 0xFFAF92, "303816be"    # move.w 0x16BE.w,d0
 PAGE_REC, PAGE_STOCK = 0xFFC110, "25622570256206002570"   # 6 Amp: first, last, current, page, end
 AMP_DESCS = [0x2748, 0x2750, 0x2758, 0x2760, 0x2768, 0x2770, 0x2778, 0x2780]  # ROM 0xC02562 on
 WS_GROUP = 0x11E
+CHOKE_DEFAULT = 2       # the cut's fade: 2 ticks of 12 ms (src/resmute.s CHOKE_RATE)
 
 
 def w(v):
@@ -48,9 +49,10 @@ def chunk(dest, data):
     return w(dest & 0xFFFF) + w(len(data) - 1) + bytes(data)
 
 
-def payload():
+def payload(choke=CHOKE_DEFAULT):
     """{name: (address, bytes)} of what goes into OS RAM at the end of boot."""
-    code, syms = mkhook.assemble(os.path.join(SRCDIR, "resmute.s"), CODE_AT, "mute")
+    code, syms = mkhook.assemble(os.path.join(SRCDIR, "resmute.s"), CODE_AT, "mute",
+                                 {"CHOKE_RATE": choke})
     if syms["mute"] != CODE_AT:
         raise ValueError(f"mute code starts at {syms['mute']:#x}, not {CODE_AT:#x}")
     if syms["mute_end"] > CODE_END or len(code) % 2:
@@ -70,8 +72,10 @@ def payload():
     return out
 
 
-def build(os_bin):
-    p = payload()
+def build(os_bin, choke=CHOKE_DEFAULT):
+    if not 0 <= choke <= 99:
+        raise ValueError("--choke: 0-99")
+    p = payload(choke)
     table2 = chunk(*p["index"]) + chunk(*p["desc"]) + w(0)
     table1 = chunk(*p["code"]) + chunk(*p["hook"]) + chunk(*p["page"]) + w(0)
     defs = {"TABLE2": CARRIER2 & 0xFFFF, "MAGIC": MAGIC, "MAGIC1_AT": 0, "MAGIC2_AT": 0}
@@ -114,8 +118,10 @@ def main():
     ap.add_argument("os")
     ap.add_argument("-o", "--out", required=True)
     ap.add_argument("--disk", nargs=2, metavar=("STOCK", "OUT"))
+    ap.add_argument("--choke", type=int, default=CHOKE_DEFAULT,
+                    help=f"the cut's fade: envelope time 0-99 (default {CHOKE_DEFAULT})")
     a = ap.parse_args()
-    patch, info = build(open(a.os, "rb").read())
+    patch, info = build(open(a.os, "rb").read(), a.choke)
     json.dump(patch, open(a.out, "w"), indent=1)
     (s1, n1), (s2, n2) = info["carrier1"], info["carrier2"]
     print(f"{a.out}: carrier 1 {s1:#x}-{s1 + n1 - 1:#x} ({n1} of {CARRIER1_END - s1}), "

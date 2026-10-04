@@ -39,7 +39,9 @@
         .equ    ST_KILLING,   8
         .equ    WS_GROUP,     0x11E
         .equ    VOICE_KILL,   0xB7C2
-        .equ    CHOKE_RATE,   10
+| CHOKE_RATE: the kill's fade, an envelope time (ROM rate table 0xC05232:
+| a linear ramp of 32767 / table[time] ticks of 12 ms). Set by
+| tools/mkresident.py --choke.
 
         .text
         .globl  mute

@@ -237,6 +237,22 @@ Confirmed on a real EPS (boot ROM 2.40, 2x expander): boots, the menu
 works, groups cut as designed, and MUTE GROUP survives SAVE INSTRUMENT and
 reloading (the stock OS loads such an instrument fine).
 
+**How fast the cut is.** The kill (`0xFFB7C2`) ramps the voice's level
+(voice `+90`) to 0 in a straight line, with the step per envelope tick
+taken from the ROM's rate table `0xC05232` by an envelope time 0-99 (`d4`):
+32767, 32767, 16384, 10922, 8192, ... (3822 at 10), so the ramp lasts
+32767 / table[time] ticks. Envelope ticks are 12 ms (measured in MAME by
+tapping the voice level writes, which the OS makes through the low mirror,
+`0x000940` + 154 × voice). The voice stealer's time 10 is about 9 ticks:
+~100 ms, long enough to hear both notes of a flam (found on hardware).
+`--choke` sets it; the default is 2 (two ticks, gone ~24 ms after the new
+note). The kill starts at the next tick, up to 12 ms after the note.
+The OS writes K1, K2 and LVOL of each sounding voice about every
+millisecond (`0x20000C-0x200010`, filter envelopes moving in small steps
+between ticks), so it smooths its own 12 ms steps. MAME's EPS sound output
+is silent (LVOL is 0 in MAME and nothing reaches the speaker), so clicks
+can only be judged on hardware.
+
 ### Code area (our code in sample RAM)
 
 > **Doesn't work on hardware**: code can't run from 13-bit sample RAM

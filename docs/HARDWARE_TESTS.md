@@ -73,6 +73,24 @@ normally? (The stock OS ignores the group; it should not complain.)
 **Tell us:** which steps worked, anything odd on the display, and any
 ERROR number. A short phone video of step 4 helps.
 
+### How fast a cut note fades (`EPS249_MUTE_12MS` / `_24MS` / `_48MS`)
+
+Found on hardware: two notes of one group played very close together
+could both be heard, one quieter. The first disk faded a cut note like the
+OS's voice stealer, over about 100 ms (8 envelope ticks of 12 ms), so on a
+flam the first note was still audible under the second. Now the fade is a
+build setting (`tools/mkresident.py --choke`): three disks, otherwise the
+same, with a cut that's done in about 12, 24 or 48 ms. `EPS249_MUTE` is
+the 24 ms one.
+
+**Try on each:** a kick and a snare (or open/closed hat) in one group. Play
+flams and fast rolls, and cut a long, loud, low sound (an 808 kick held
+down) with a short one. Listen for:
+* the first note still heard under the second (too slow);
+* a click or pop when a note is cut (too fast).
+
+**Tell us** which one sounds right. That becomes the default.
+
 ## Test 1: code area + mute groups (`EPS249_MUTETEST`)
 
 > **Doesn't run on hardware** (ERROR 131: code in sample RAM). Kept for

@@ -6,7 +6,8 @@ One disk: OS 2.49 with the resident patch + the TR 8O8 kit. Runs, with boot
 ROM 2.40 (the hardware we test on) and the other ROM we have:
 * mame/keys/panel_mute.txt: EDIT, the 6 Amp page, ◄ = MUTE GROUP, ▲ = 1
   with WS=ALL, then C2, E2, G2 with key-ups in between: each note cuts the
-  one before, a key-up cuts nothing, every wavesample's byte 0x11E is 1.
+  one before (gone within 35 ms: --choke 2 fades over two 12 ms ticks), a
+  key-up cuts nothing, every wavesample's byte 0x11E is 1.
 * the same without ▲ (MUTE GROUP stays 0): nothing is cut.
 * without ▲, on a copy of the disk with groups preset per wavesample
   (tools/epstool.py groups: C2 and G2 in group 1, E2 in group 2): E2
@@ -88,6 +89,9 @@ def main():
         check("WS=ALL: every wavesample's group is 1", groups == [1] * 13)
         check("E2 cuts C2 (only once E2 starts)", k(C2) and min(k(C2)) > 33.25)
         check("G2 cuts E2", k(E2) and min(k(E2)) > 33.55)
+        last_c2 = max((t for t, v in frames if any(kk == C2 for kk, _, _ in v)), default=0)
+        check(f"the cut is quick: C2 gone {1000 * (last_c2 - 33.3):.0f} ms after E2 (< 35)",
+              33.3 < last_c2 < 33.335)
         check("key-ups cut nothing (G2 rings out)", not k(G2))
         check("group 0: nothing is cut", not any(s == P.KILLING for _, v in n_frames for _, _, s in v))
         check("group 0: bytes stay 0", n_groups == [0] * 13)
