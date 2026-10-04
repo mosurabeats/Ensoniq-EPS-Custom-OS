@@ -168,7 +168,7 @@ instruments with per-key wavesamples.
 | 5 | **CHOP** (below) | chopping by hand is tedious | EQUAL with zero-crossing snap done on the swing build (Edit, 8 Wave; `EPS249_NEXT`, MAME-tested); GRID and TRANSIENT later |
 | 6 | **Erase while loop recording** (hold a button + key: that key's notes are erased as the loop passes) | fix takes without stopping | code area; the undo playback skip (`0xFF638A` hook) already drops notes from a take without touching the timing |
 | 7 | Note repeat while recording (held key repeats at the grid, swung) | rolls | code area, sequencer clock |
-| 8 | Sampling crunch: **SP sampling mode done** (SAMPLE RATE 26.04 kHz picks FILTER CUTOFF 20.0 KHZ; `EPS249_NEXT`, emulator-tested); filter OUT (25-50 kHz, needs the hardware probe), CRUSH (12-bit / SP-style pitching renders), S900 filter | tone | overlay 2 / window |
+| 8 | Sampling crunch: **done**: FILTER CUTOFF up to 25.0 / 33.3 / 50.0 kHz and SP sampling mode (SAMPLE RATE 26.04 kHz picks 20.0), `EPS249_NEXT`, emulator-tested, hardware test next; still to do: CRUSH (12-bit / SP-style pitching renders), S900 filter | tone | overlay 2 (MSB ADJUSTMENT's room) / window |
 
 The code area is 4 KB with mute groups only (about 600 bytes of code); with
 the loop-record code (swing, undo) the image is about 4.5 KB and the area

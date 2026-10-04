@@ -175,10 +175,12 @@ Everything on `EPS249_SWING`, plus:
   with DELETE WAVESAMPLE; it's saved with the instrument and loads on a
   stock EPS too. The sequencer must be stopped. Trim the sample to the
   loop first (TRUNCATE), so 16 slices of a 1-bar break are its 16ths.
-* **SP sampling mode:** when sampling, set SAMPLE RATE = 26.04 KHZ (the
-  SP-1200's rate): FILTER CUTOFF jumps to 20.0 KHZ, the widest, instead of
-  the stock 9.09 KHZ, so the input aliases like an SP-1200's. Other rates
-  are stock; FILTER CUTOFF can be lowered by hand after.
+* **Sampling filter up to 50 kHz and SP sampling mode:** FILTER CUTOFF has
+  three more steps after 20.0: 25.0, 33.3, 50.0 (shown without "KHZ":
+  `2:0`, `3(3`, `5!0`). SAMPLE RATE = 26.04 KHZ (the SP-1200's rate) picks
+  20.0 by itself instead of the stock 9.09; 14.3 is closest to a real
+  SP-1200's input filter. MSB ADJUSTMENT (a service command) now does
+  nothing: its code made room.
 * Behind the scenes: the borrowed part of the OS is now the whole
   sequence-commands overlay except its first kilobyte (room for about 7 KB
   of our code, 3.9 KB used), and our code steps aside whenever you're in
@@ -203,11 +205,14 @@ undo: loop record a beat, play a wrong hit and press RECORD in the same
 pass (it shouldn't come round again); play a pass, then press RECORD at
 the start of the next one before playing (that pass's notes should go
 silent). Keep with NEW and play the sequence back.
-SP sampling mode: sample the same drum break or record twice, once at
-26.04 KHZ (filter 20.0 KHZ, set by itself) and once at 26.04 with FILTER
-CUTOFF set back to 9.09 KHZ: the first should sound grittier, with hi-hats
-and cymbals folding into metallic noise. Check the display shows 20.0 KHZ
-after picking 26.04, and that other rates still pick their usual filter.
+Sampling filter: at SAMPLE RATE 26.04 KHZ (check that FILTER CUTOFF shows
+20.0 right after), sample the same break or record with FILTER CUTOFF
+14.3, 20.0, 25.0, 33.3 and 50.0. The higher ones should sound brighter and
+grittier on hats and cymbals. Listen especially at 33.3 and 50.0: those
+run the filter chip faster than the stock OS ever does, so tell us if
+they sound wrong (silence, a whine, distortion, much more noise) or the
+level meter behaves oddly. Check that other rates still pick their usual
+filter, and that normal sampling (e.g. 31.25 KHZ) sounds as before.
 Then CHOP: sample (or load) a drum break into its own instrument, trim it
 to a bar or two, chop it into 16 and play the slices. Tell us whether the
 cuts sound clean and land on the hits, and whether SAVE INSTRUMENT and

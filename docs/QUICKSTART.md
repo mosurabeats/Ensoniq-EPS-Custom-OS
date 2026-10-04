@@ -30,7 +30,7 @@ end. **▲ / ▼** or the slider change a value.
 | CHOP | Edit, **8 Wave**, ◄ once | (an action) |
 | SWING% / QUANTIZE | Edit, **Seq·Song**, ◄ once / twice | not saved: 1/16 and 50 at power-on |
 | Loop undo | **RECORD** while loop recording | |
-| SP sampling mode | sampling: SAMPLE RATE = **26.04 KHZ** | (a sampling setting) |
+| SP sampling mode, FILTER CUTOFF to 50 kHz | sampling: SAMPLE RATE = **26.04 KHZ**, FILTER CUTOFF | (sampling settings) |
 
 To pick what you're editing (instrument, layer, wavesample): press
 **Edit**. With the cursor on **WS=**, press a key to select the wavesample
@@ -131,20 +131,34 @@ Things to know:
 * Good with HIT = ONE-SHOT (slices play out) and a mute group (one slice
   at a time, like an MPC's mono pad).
 
-## SP sampling mode (SP-1200 grit)
+## Sampling: FILTER CUTOFF up to 50 kHz, and SP sampling mode
 
-The SP-1200 samples at 26.04 kHz with little filtering on its input, so
-high sounds fold back down as gritty aliasing. The EPS has that exact rate
-in its list.
+The EPS's input filter keeps high sounds from folding back down as
+aliasing when you sample at a low rate. Stock, it stops at 20.0 kHz; the
+hardware goes further, so FILTER CUTOFF now has three more steps:
+**25.0, 33.3 and 50.0** (50.0 is as open as this filter gets). The
+display shows the values without "KHZ", e.g. `FILTER CUTOFF=5!0` for 50.0
+(the EPS draws "5." as one character).
 
-* Sample as usual and set **SAMPLE RATE = 26.04 KHZ**. FILTER CUTOFF
-  jumps to **20.0 KHZ**, its widest setting: the input is then barely
-  filtered, like the SP's. (Stock, that rate gets a 9.09 KHZ filter that
-  keeps it clean.)
-* Want it a bit smoother? Lower FILTER CUTOFF by hand after picking the
-  rate. Every other rate works as on the stock EPS.
-* Then trim, CHOP and pitch as usual. For the full SP feel: 12-bit
-  crunch and SP-style pitching are planned (CRUSH).
+**SP sampling mode:** set **SAMPLE RATE = 26.04 KHZ**, the E-mu
+SP-1200's own rate, and FILTER CUTOFF jumps to **20.0**. (Stock, that
+rate picks 9.09 kHz, which keeps it clean.) Everything between 13 kHz
+(the most 26.04 kHz can hold) and the cutoff folds back as grit on hats
+and cymbals.
+
+* **Real SP amount:** the SP's own input filter is steep and closes at
+  about 13 kHz (measured on the SP-12, its predecessor), so only a little
+  aliases. For that, set FILTER CUTOFF to **14.3** after picking the
+  rate.
+* **Dirtier than an SP:** 20.0 (the default here), 25.0, 33.3 or 50.0.
+* Every other rate works as on the stock EPS (FILTER CUTOFF is reset
+  when you change the rate, so set it after).
+* Then trim, CHOP and pitch as usual. 12-bit crunch and SP-style
+  pitching are planned (CRUSH).
+
+(To make room, the factory service command MSB ADJUSTMENT now does
+nothing, like DC OFFSET ADJUSTMENT already did. It's a DAC trim for
+service technicians.)
 
 ## Tuning a sample down (or up)
 
@@ -162,8 +176,8 @@ The stock EPS already does this, on the **4 Pitch** page (Edit):
 
 ## Good to know
 
-* **Command mode and sampling are the stock OS** (apart from SP sampling
-  mode's filter choice). Our code steps aside while you're in Command
+* **Command mode and sampling are the stock OS** (apart from the
+  sampling filter: SP mode and the steps above 20 kHz). Our code steps aside while you're in Command
   mode or sampling, and comes back when you leave. Sequence commands,
   disk commands and sampling work as always.
 * **Not saved:** QUANTIZE and SWING% (1/16 and 50 at power-on). Mute

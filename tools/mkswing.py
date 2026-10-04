@@ -14,8 +14,10 @@ Edits to the OS file:
   * 0xFFC994: early and late (a zero run at the bottom of the init stack),
   * the overlay-3 slot: overlay 0 with our window image (src/swing/
     window.s + the resident chunks it installs) in the region,
-  * overlay 2, 0xFFE20E (FILTER CUTOFF from SAMPLE RATE): SP sampling mode,
-    src/swing/spf.s.
+  * sampling (src/swing/spsample.s): FILTER CUTOFF up to 50 kHz and SP
+    sampling mode, in overlay 2 where MSB ADJUSTMENT was (its command now
+    does nothing), the sampling page record and the OS code that names its
+    entries.
 """
 import argparse
 import json
@@ -47,9 +49,19 @@ OS1_AT, OS1_END = 0xFF4EA8, 0xFF4EC2    # boot routine 0xFF4EA6
 OS2_AT, OS2_END = 0xFF1764, 0xFF1774    # after the mute code: the jsr at 0xFF1770 runs once
 LDR_END = 0xFF4E40                      # boot routine 0xFF4E20, right before the loader
 LDR_MIN = 0xFF4E20
-SPF_AT, SPF_END = 0xFF5214, 0xFF5224    # the tail of boot routine 0xFF5212
-SPF_SITE = 0xFFE20E                     # overlay 2: FILTER CUTOFF from SAMPLE RATE
-SPF_STOCK = "70001038020f207c00c06ffe11f0000002124e75"
+SP_AT, SP_END = 0xFFFD84, 0xFFFE0E      # overlay 2: MSB ADJUSTMENT's code (4-aligned)
+# Sampling edits: address -> (overlay or None, stock bytes); the new bytes
+# come from sampling_edits().
+SAMPLING_STOCK = {
+    0xFFE20E: (2, "70001038020f207c00c06ffe11f0000002124e75"),  # filter from rate
+    0xFFE38A: (2, "00c0704e"),          # movea.l #filter table,a1
+    0xFFE642: (2, "00c0704e"),          # movea.l #filter table,a4
+    0xFFC23A: (None, "28a628b028a6"),   # the sampling page: first, last, current
+    0xFF31A8: (None, "28a6"),           # move.w #first,0xC23E
+    0xFF3240: (None, "28a6"),           # cmpa.w #first,a3
+    0xFF324A: (None, "28b0"),           # cmpa.w #last,a3
+    0xFFC5C4: (None, "fd82"),           # MSB ADJUSTMENT's handler
+}
 
 STOCK = {                               # sites we patch: address -> stock bytes
     0xFF832E: "4ef900c08490",           # trampoline: jmp ROM sizing
@@ -60,7 +72,6 @@ STOCK = {                               # sites we patch: address -> stock bytes
     0xFF53B8: "4eb84e40", 0xFF8A24: "4eb84e40",
     0xFFB252: "103816b6",               # FULL LEVEL: move.b 0x16B6.w,d0 (voice start)
     0xFFAE54: "4a2a0014",               # ONE-SHOT: tst.b 20(a2) (key-up)
-    0xFF5212: "31fcc97ac68e4238c3f44278c81a4ef854a6",   # boot-only (SP mode's home)
 }
 
 
@@ -82,18 +93,33 @@ def asm(name, org, entry, defs=None):
     return bytes(code), syms
 
 
-def spf_site():
-    """Overlay 2's FILTER CUTOFF reset, same 20 bytes: the rate (its only
-    caller, 0xFF45A6, has a6 = 0x20F, SAMPLE RATE) and the ROM table go to
-    the resident spf (src/swing/spf.s), which picks the filter."""
-    code = (bytes.fromhex("7000")                # moveq #0,d0
-            + bytes.fromhex("1016")              # move.b (a6),d0
+def sampling_edits():
+    """{address: (overlay, new bytes)} for the sampling changes
+    (src/swing/spsample.s)."""
+    code, syms = mkhook.assemble(os.path.join(SW, "spsample.s"), SP_AT, "etab",
+                                 {"ORG16": SP_AT & 0xFFFF})
+    if syms["etab"] != SP_AT or SP_AT + len(code) > SP_END:
+        raise ValueError("spsample.s doesn't fit")
+    first, last = syms["sindex"] & 0xFFFF, syms["sindex_last"] & 0xFFFF
+    etab = syms["etab"].to_bytes(4, "big")
+    site = (bytes.fromhex("7000")                # moveq #0,d0
+            + bytes.fromhex("1016")              # move.b (a6),d0 (the only caller,
+                                                 # 0xFF45A6, has a6 = 0x20F)
             + bytes.fromhex("207c00c06ffe")      # movea.l #0xC06FFE,a0
-            + bytes.fromhex("4eb8") + w(SPF_AT)  # jsr spf.w
+            + bytes.fromhex("4eb8") + w(syms["spf"])   # jsr spf.w
             + bytes.fromhex("11c10212")          # move.b d1,0x212.w
             + bytes.fromhex("4e75"))             # rts
-    assert len(code) == len(SPF_STOCK) // 2
-    return code
+    return {
+        SP_AT: (2, bytes(code)),
+        0xFFE20E: (2, site),
+        0xFFE38A: (2, etab),
+        0xFFE642: (2, etab),
+        0xFFC23A: (None, w(first) + w(last) + w(first)),
+        0xFF31A8: (None, w(first)),
+        0xFF3240: (None, w(first)),
+        0xFF324A: (None, w(last)),
+        0xFFC5C4: (None, w(0x4B54)),     # the do-nothing handler (as DC OFFSET ADJUSTMENT)
+    }, syms
 
 
 def build(os_bin, quantize=QLABELS.index("1/16"), swing=50, choke=mkresident.CHOKE_DEFAULT):
@@ -121,18 +147,16 @@ def build(os_bin, quantize=QLABELS.index("1/16"), swing=50, choke=mkresident.CHO
         lvl, _ = asm("lvl.s", LVL_AT, "lvl")
         os1, _ = asm("oneshot.s", OS1_AT, "oneshot", calls)
         os2, _ = asm("oneshot2.s", OS2_AT, "oneshot2")
-        spf, _ = asm("spf.s", SPF_AT, "spf")
         for name, at_, code, end in (("swapx", SWAPX_AT, swapx, SWAPX_END), ("ml", ML_AT, ml, ML_END),
                                      ("ldr", ldr_at, ldr, LDR_END), ("lvl", LVL_AT, lvl, LVL_END),
                                      ("oneshot", OS1_AT, os1, OS1_END),
-                                     ("oneshot2", OS2_AT, os2, OS2_END),
-                                     ("spf", SPF_AT, spf, SPF_END)):
+                                     ("oneshot2", OS2_AT, os2, OS2_END)):
             if at_ + len(code) > end or (name == "ldr" and at_ < LDR_MIN):
                 raise ValueError(f"{name} doesn't fit ({len(code)} bytes)")
         if ldr_at + len(ldr) != LDR_END:
             raise ValueError("ldr must end at the loader")
         chunks = [(MUTE_AT, mute), (SWAPX_AT, swapx), (ldr_at, ldr), (ML_AT, ml),
-                  (LVL_AT, lvl), (OS1_AT, os1), (OS2_AT, os2), (SPF_AT, spf),
+                  (LVL_AT, lvl), (OS1_AT, os1), (OS2_AT, os2),
                   (0xFFAF92, bytes.fromhex("4eb8") + w(MUTE_AT)),
                   (0xFFB252, bytes.fromhex("4eb8") + w(LVL_AT)),
                   (0xFFAE54, bytes.fromhex("4eb8") + w(OS1_AT))]
@@ -165,8 +189,18 @@ def build(os_bin, quantize=QLABELS.index("1/16"), swing=50, choke=mkresident.CHO
     for a, stock in STOCK.items():
         if at(a, len(stock) // 2).hex() != stock:
             raise ValueError(f"{a:#x} is not stock OS 2.49")
-    if at(SPF_SITE, len(SPF_STOCK) // 2, 2).hex() != SPF_STOCK:
-        raise ValueError(f"overlay 2 {SPF_SITE:#x} is not stock OS 2.49")
+    sedits, ssyms = sampling_edits()
+    sampling = []
+    for a, (ov, data) in sedits.items():
+        stock = SAMPLING_STOCK[a][1] if a in SAMPLING_STOCK else at(a, len(data), ov).hex()
+        if a in SAMPLING_STOCK and (SAMPLING_STOCK[a][0] != ov or at(a, len(stock) // 2, ov).hex() != stock):
+            raise ValueError(f"{a:#x} is not stock OS 2.49")
+        if len(stock) // 2 != len(data):
+            raise ValueError(f"{a:#x}: {len(data)} bytes for {len(stock) // 2}")
+        e = {"addr": f"0x{a:06X}", "expect": stock, "data": data.hex()}
+        if ov is not None:
+            e["overlay"] = ov
+        sampling.append(e)
     if any(at(CARRIER, len(carrier))):
         raise ValueError("the boot stage's bytes are not zero in this OS")
     ov0 = at(OVERLAY_WINDOW, OVERLAY_SIZE, 0)
@@ -182,10 +216,10 @@ def build(os_bin, quantize=QLABELS.index("1/16"), swing=50, choke=mkresident.CHO
         {"addr": "0xFF1770", "expect": STOCK[0xFF1770], "data": "4eb8" + w(lsyms["late"]).hex()},
         {"addr": f"0x{CARRIER:06X}", "expect": "00" * len(carrier), "data": carrier.hex()},
         {"addr": f"0x{OVERLAY_WINDOW:06X}", "overlay": 3, "expect": slot3.hex(), "data": ov3.hex()},
-        {"addr": f"0x{SPF_SITE:06X}", "overlay": 2, "expect": SPF_STOCK, "data": spf_site().hex()},
-    ]}
+    ] + sampling}
     info = {"window": wsyms, "image_bytes": len(image), "carrier_bytes": len(carrier), "len": LEN,
-            "ldr_at": ldr_at, "reserve": reserve, "chunks": chunks, "ov3": bytes(ov3)}
+            "ldr_at": ldr_at, "reserve": reserve, "chunks": chunks, "ov3": bytes(ov3),
+            "sampling": ssyms}
     return patch, info
 
 

@@ -346,16 +346,38 @@ Overlay 2 holds the sampling code along with the disk utilities.
 | `0xFFE3E6` | Input level meter: reads the input sample from OTIS `0x200018`, peak and average |
 | `0xFFFD14` | Sampling defaults |
 
-**SP sampling mode** (swing build, `src/swing/spf.s`). The filter reset
-`0xFFE20E` (20 bytes, overlay 2, only caller `0xFF45A6` with `a6` = `0x20F`)
-is rewritten in place to `moveq #0,d0; move.b (a6),d0; movea.l
-#0xC06FFE,a0; jsr 0x5214.w; move.b d1,0x212.w; rts`, and the resident
-code at `0xFF5214` (the tail of the boot-only `0xFF5212`) returns the
-table's filter, or 11 (20.0 KHZ) for rate 27 (26.04 kHz = 625 kHz / 24,
-the SP-1200's rate; the stock filter there is 5, 9.09 KHZ). The overlay-2
-edit is in the OS file (`tools/mkswing.py`); `tests/test_spmode.py` runs
-the patched overlay for all 40 rates. MAME can't show the sampling page:
-it stops at the level meter on the stock OS too.
+**Sampling changes** (swing build, `src/swing/spsample.s`, static edits to
+the OS file; nothing installed at boot). Room: MSB ADJUSTMENT's code in
+overlay 2 (`0xFFFD82-0xFFFE0D`, reached only through its command record
+`0xFFC5C4`, whose handler becomes the do-nothing `0xFF4B54`, as DC OFFSET
+ADJUSTMENT's is), from `0xFFFD84`.
+* **FILTER CUTOFF up to 50 kHz.** N = 13, 14, 15 (25.0, 33.3, 50.0 kHz).
+  Our 15-entry E table replaces the ROM's at both readers (`0xFFE388`,
+  `0xFFE640`: the `movea.l #0xC0704E` immediates). The sampling page is
+  page record `0xFFC23A` (14-byte records: first, last, current entry,
+  two overlay-2 handlers, message, flags; entries `0xC028A6-0xC028B0`:
+  meter, SAMPLE RATE, FILTER CUTOFF `0xC028E2`, `0x210`, INPUT LEVEL, and
+  the sample-time entry); it now points at our copy of the index with our
+  FILTER CUTOFF descriptor (a choice of 15, labels 3 cells wide: the
+  ROM's without " KHZ", then `2:0`, `3(3`, `5!0`). The OS code that names
+  the first and last entry (`0xFF31A6` sets current = first when the page
+  opens; `0xFF323E`/`0xFF3248` run the meter / sample-time displays) names
+  ours. The ROM's one-cell "digit + point" codes: `!` 0., `#` 1., `%` 2.,
+  `(` 3., `)` 4., `:` 5., `;` 6., `[` 7., `\` 8., `]` 9. (from the
+  SAMPLE RATE labels).
+* **SP sampling mode.** The filter reset `0xFFE20E` (20 bytes, only caller
+  `0xFF45A6` with `a6` = `0x20F`) is rewritten in place to `moveq #0,d0;
+  move.b (a6),d0; movea.l #0xC06FFE,a0; jsr spf.w; move.b d1,0x212.w;
+  rts`; spf returns the table's filter, or 11 (20.0 KHZ) for rate 27
+  (26.04 kHz = 625 kHz / 24, the SP-1200's rate; the stock filter there
+  is 5, 9.09 KHZ).
+* The SP-12's input filter (D. T. Yeh, ICMC 2007, from SPICE models of
+  the circuit) is flat to about 13 kHz, -20 dB at 14.5, -40 dB at 15.5,
+  below -80 dB by 17 kHz: little aliasing. The closest EPS step is 14.3.
+`tests/test_spmode.py` runs the patched overlay for all 40 rates and checks
+the tables and the page against the ROM's. MAME can't show the sampling
+page: it stops at the level meter on the stock OS too. Whether the
+XR-1008 behaves at the 2.5 MHz clock of N = 15 is for the hardware test.
 
 The resident analog-control scanner (`0xFFBE46`, 6 × 24-byte records at
 `0xFFC334`) also drives OP4–OP6 to select which front-panel analog input to
@@ -978,8 +1000,9 @@ What we have now, all measured on 13-bit sample RAM:
 * **Resident** (always there, for hooks that must also work in Command
   mode: mute, HIT, the swap itself): boot-only code only. Used: `0xFF1720`
   (mute 68 + HIT 8), `0xFF2990` (ml 38), `0xFF4E20` (ldr 32), `0xFF4EA8`
-  (HIT 26), `0xFF86E8` (swapx 30), `0xFF874C` (HIT 26), `0xFF5214` (SP
-  sampling mode 14). Left: a few 2-4 byte ends. Not usable: `0xFF17D4` and
+  (HIT 26), `0xFF86E8` (swapx 30), `0xFF874C` (HIT 26). Left: `0xFF5214-
+  0xFF5223` (16) and a few 2-4 byte ends. (Overlay 2's sampling changes
+  live in overlay 2 itself, where MSB ADJUSTMENT was.) Not usable: `0xFF17D4` and
   `0xFF242A` (called at runtime, e.g. by the disk code), the zero runs in
   `0xFF818C-0xFF844A` (kernel jump and vector tables with unused slots:
   the ROM kernel indexes them).
