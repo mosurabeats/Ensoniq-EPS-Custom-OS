@@ -214,6 +214,9 @@ prompt used for its variables (the count was written through it; MAME
 crashed with ERROR 129), and counts under 10 printed their ones as 0.
 Both fixed; MAME now goes ▼ ▼ to 8.
 
+**CHOP, second hardware test (2026-10-05, the disk with both fixes):
+works**: the loop chops into slices that play in order.
+
 **HIT, first hardware test:** no setting changed the fresh sample, and it
 needed the key held. A new wavesample on the EPS is MODE = LOOP FORWARD
 (checked in MAME: CREATE NEW WAVESAMPLE gives mode 2, soft velocity
