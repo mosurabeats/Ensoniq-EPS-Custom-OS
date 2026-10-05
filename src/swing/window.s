@@ -140,8 +140,8 @@ pages:  .word   0xC110, 0x2562, 0x2570, 0x2570
         aw      layer_index+2*8
         .word   0xC0F2, 0x24FA, 0x2518, 0x251E
         aw      wave_index
-        aw      wave_index+2*16
-        aw      wave_index+2*16
+        aw      wave_index+2*17
+        aw      wave_index+2*17
         .equ    NPAGES, 4
 
 | Words in OS code that name the Seq·Song page's entries: when the Edit
@@ -216,17 +216,25 @@ hit_labels:
         .asciz  "FULL+1SHOT"
         .balign 2
 
-| The Wave page (Edit, 8 Wave): its ROM entries, then CHOP (src/swing/chop.s).
+| The Wave page (Edit, 8 Wave): its ROM entries, then CRUSH (src/swing/crush.s)
+| and CHOP (src/swing/chop.s), so ◄ from the first entry is CHOP, twice CRUSH.
 wave_index:
         .word   0x25A0, 0x25A8, 0x25B0, 0x25B8, 0x25C0, 0x25C8, 0x25D0, 0x25D8
         .word   0x25E0, 0x25E8, 0x25F0, 0x25F8, 0x2600, 0x2608, 0x2610, 0x2618
+        aw      crush_desc
         aw      chop_desc
+crush_desc:
+        .byte   0x0B, CHOP_TYPE         | parameter 11, our type (no value)
+        .word   0, 0
+        aw      crush_label
 chop_desc:
         .byte   0x0A, CHOP_TYPE         | parameter 10, our type (no value)
         .word   0, 0                    | (w2, where: unused)
         aw      chop_label
 chop_label:
         .asciz  "CHOP"
+crush_label:
+        .asciz  "CRUSH"
         .balign 2
 
 | The 6 Amp page: its ROM entries, then MUTE GROUP.
@@ -521,6 +529,7 @@ grids:  .word   48, 32, 24, 16, 12, 8, 6, 4
         .include "sq.s"
         .include "chop.s"
         .include "tune.s"
+        .include "crush.s"
 
         .balign 2
 chunks:                                 | (tools/mkswing.py appends them)

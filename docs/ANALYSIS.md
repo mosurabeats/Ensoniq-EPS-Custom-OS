@@ -1008,6 +1008,32 @@ edit goes to `0xFF44E0`, as the OS's own edits do (it redraws). With
 LYR=ALL the OS calls the edit once per layer. MAME:
 `mame/test_tune_hw.py`.
 
+**CRUSH** (`src/swing/crush.s`). Edit, 8 Wave, the entry before CHOP
+(same parameter type 0x17; `chop_enter` sends ENTER on it to `crush`).
+Two prompts in the CHOP prompt's style (PITCH -12..+12, BITS 12 / 8 /
+OFF = masks `0xFFF0` / `0xFF00` / `0xFFFF` on the 16-bit sample words),
+then:
+* Pass 1 counts the output: the source (start to end) is stepped through
+  with a 16.16 step of 2^(p/12) (a 25-entry table), and the loop start/end
+  become the first output samples at or after them.
+* `0xFFA45E` (the OS's "add a wavesample", COPY WAVESAMPLE's) allocates
+  0x120 + 2 × length bytes in the source's layer: the record goes at the
+  end of the layer's chain, the data right after it (`MEMORY FULL` etc.
+  through `0xFF4A8C` when there's no room). Sample memory may move, so the
+  instrument, layer and both records are looked up again afterwards.
+* The record's parameters (+10..+0x11F) are copied from the source, the
+  owner (+0x22) cleared (its own data), start/end/loop set.
+* Pass 2 writes each output sample as the source sample the step lands in
+  (whole part + 16-bit carry, no interpolation: the SP-1200's drop-sample
+  pitching), masked.
+* `0xFF8352` (the OS's tidy-up after adding one), the key map rebuilt from
+  the ranges (`0xFF83D0`: the new record is later in the chain, so it
+  takes the source's keys), and the instrument's edit wavesample (+68)
+  set to it, so CHOP comes next.
+MAME: `mame/test_crush_hw.py` (16 checks: the samples against a Python
+model of the pick, 12 and 8 bits, loop points, the copied parameters, the
+source unchanged, the key map, C2 playing it).
+
 **Tasks.** The wrap hook runs in the sequencer task (user stack around
 `0xFFCB56`, task 3, entry `0xFF583A`), the commit and ldr/ml in the UI task
 (`0xFFCA84`). Measured in MAME with a 50 ms busy loop in the wrap hook and
@@ -1018,8 +1044,8 @@ be exchanged out from under a running hook.
 
 What we have now, all measured on 13-bit sample RAM:
 * **Window region** (`0xFFE400-0xFFFFDF`, swapped in outside Command mode):
-  7136 bytes, 4074 used (swing, loop undo, CHOP, TUNE, patch/unpatch,
-  page tables).
+  7136 bytes, 5196 used (swing, loop undo, CHOP, TUNE, CRUSH,
+  patch/unpatch, page tables).
   Real-time hooks that only need to work in play/Edit mode (the sequencer
   ones) can live here. This is where the next features go.
 * **Resident** (always there, for hooks that must also work in Command

@@ -48,7 +48,7 @@
         .equ    W_DATA,     0x120       | the sample data follows the record
         .equ    SNAP_MAX,   127         | samples (4 ms at 31 kHz)
         .equ    KEY_C2,     36          | the keyboard's lowest key
-        .equ    CHOP_SLOT,  wave_index+2*16-wmagic+REGION16
+        .equ    CHOP_SLOT,  wave_index+2*17-wmagic+REGION16
         .equ    CHOP_TYPE,  0x17        | a parameter type no page uses
         .equ    GET_MSG,    0x1790      | carry: none; a2 = kind, d2 = button
         .equ    BUTTON,     0x1A88      | (kind) a panel button
@@ -72,6 +72,8 @@ chop_enter:
         bne.s   1f
         cmpi.w  #CHOP_SLOT,WAVE_PAGE+4.w
         beq.s   chop
+        cmpi.w  #CRUSH_SLOT,WAVE_PAGE+4.w
+        beq     crush                   | (src/swing/crush.s)
 1:      jmp     ENTER_EDIT.w
 
 chop:   movem.l d0-d7/a0-a6,-(sp)

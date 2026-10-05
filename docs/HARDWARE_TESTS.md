@@ -142,7 +142,7 @@ happens right there, a few milliseconds), anything odd on the display, any
 ERROR number. Saving and loading the sequence afterwards should be normal:
 the quantized notes are ordinary notes.
 
-## Next disk (`EPS249_NEXT`): HIT, TUNE, loop undo, CHOP, SP sampling, more room
+## Next disk (`EPS249_NEXT`): HIT, TUNE, loop undo, CHOP, CRUSH, SP sampling, more room
 
 Everything on `EPS249_SWING`, plus:
 
@@ -180,6 +180,16 @@ Everything on `EPS249_SWING`, plus:
   with DELETE WAVESAMPLE; it's saved with the instrument and loads on a
   stock EPS too. The sequencer must be stopped. Trim the sample to the
   loop first (TRUNCATE), so 16 slices of a 1-bar break are its 16ths.
+* **CRUSH** (the SP-1200's pitching and 12 bits): pick a wavesample in
+  Edit, **8 Wave**, ◄ twice (once is CHOP): `CRUSH=PRESS ENTER`. ENTER:
+  `CRUSH PITCH=+0?` (▲ / ▼, -12..+12, ENTER), `CRUSH BITS=12?` (12, 8 or
+  OFF, ENTER): `CRUSHED: WS n`. A new wavesample with its own data, the
+  source re-read at the new pitch SP-style (each sample the source sample
+  the fixed step lands in, no smoothing) and cut to 12 or 8 bits, on the
+  source's keys, everything else copied (loop points moved), and it's the
+  edit wavesample, ready for CHOP. The original stays in memory (DELETE
+  WAVESAMPLE it by number to free the room). MEMORY FULL if there's no
+  room for the copy.
 * **Sampling filter up to 50 kHz and SP sampling mode:** FILTER CUTOFF has
   three more steps after 20.0: 25.0, 33.3, 50.0 (shown without "KHZ":
   `2:0`, `3(3`, `5!0`). SAMPLE RATE = 26.04 KHZ (the SP-1200's rate) picks
@@ -188,7 +198,7 @@ Everything on `EPS249_SWING`, plus:
   nothing: its code made room.
 * Behind the scenes: the borrowed part of the OS is now the whole
   sequence-commands overlay except its first kilobyte (room for about 7 KB
-  of our code, 3.9 KB used), and our code steps aside whenever you're in
+  of our code, 5.1 KB used), and our code steps aside whenever you're in
   Command mode or sampling, so those always see the stock OS.
 
 MAME (13-bit sample RAM, boot ROM 2.40, `mame/test_swing_hw.py`, 16
@@ -203,6 +213,11 @@ into 16: 16 wavesamples on C2 up, end to end over the kick, cuts on the
 nearest zero crossings, C#2 plays slice 2; NO EDIT WS SELECTED with WS=ALL;
 CANCEL makes nothing; wavesample 4 (keys 61-75, ROOT KEY 72) slices from 72;
 LIVE KIT's 66196-sample wavesample gets 16 even slices.
+`mame/test_crush_hw.py` (16 checks): the TR 8O8 kick crushed at -5 / 12
+bits (8159 samples, every one the SP-style pick of the kick, masked to 12
+bits) and at +7 / 8 bits (4080 samples); loop points moved, parameters
+copied, own data, the kick unchanged, the crushed one on the kick's keys,
+C2 plays it.
 
 **CHOP, first hardware test (a 2-bar loop at 92 BPM, about 5 s):** the
 slices started at C2, not middle C where the sample was (fixed: they start
@@ -247,6 +262,13 @@ Then CHOP: sample (or load) a drum break into its own instrument, trim it
 to a bar or two, chop it into 16 and play the slices. Tell us whether the
 cuts sound clean and land on the hits, and whether SAVE INSTRUMENT and
 loading it back keep the slices.
+CRUSH: sample a break with TUNE (or the turntable) a few semitones up,
+then CRUSH it PITCH -5 (or however far you went up), BITS 12, and compare
+with the original on the same key range: it should sound grainier and
+ring in the lows, like an SP-1200 pitched down. Try +5 / 8 bits on hats
+(harsher, aliased). Then CHOP the crushed one. Tell us if it clicks or
+crackles where it shouldn't, how long CRUSHING takes on a long loop, and
+whether it survives SAVE INSTRUMENT and loading it back.
 
 ## Test 1: code area + mute groups (`EPS249_MUTETEST`)
 

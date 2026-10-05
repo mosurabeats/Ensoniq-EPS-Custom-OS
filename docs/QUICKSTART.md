@@ -1,8 +1,8 @@
 # Quick start: the custom EPS OS (`EPS249_NEXT`)
 
 Everything the stock EPS OS 2.49 does, plus mute groups, MPC-style swing
-for loop recording, loop undo, HIT (full level / one-shot), TUNE, CHOP and
-SP sampling mode. For the original EPS (tested with boot ROM 2.40 and the 2x
+for loop recording, loop undo, HIT (full level / one-shot), TUNE, CHOP,
+CRUSH and SP sampling mode. For the original EPS (tested with boot ROM 2.40 and the 2x
 expander), from a Gotek or a floppy.
 
 ## Boot
@@ -29,6 +29,7 @@ end. **▲ / ▼** or the slider change a value.
 | HIT | Edit, **9 Layer**, ◄ once | the instrument (per layer) |
 | TUNE | Edit, **9 Layer**, ◄ twice | the instrument (per layer) |
 | CHOP | Edit, **8 Wave**, ◄ once | (an action) |
+| CRUSH | Edit, **8 Wave**, ◄ twice | (an action: makes a new wavesample) |
 | SWING% / QUANTIZE | Edit, **Seq·Song**, ◄ once / twice | not saved: 1/16 and 50 at power-on |
 | Loop undo | **RECORD** while loop recording | |
 | SP sampling mode, FILTER CUTOFF to 50 kHz | sampling: SAMPLE RATE = **26.04 KHZ**, FILTER CUTOFF | (sampling settings) |
@@ -140,6 +141,49 @@ Things to know:
 * Good with HIT = ONE-SHOT (slices play out) and a mute group (one slice
   at a time, like an MPC's mono pad).
 
+## CRUSH: the SP-1200's pitching and 12 bits
+
+The SP-1200 plays a sample at another pitch by skipping or repeating
+samples at a fixed rate, with no smoothing, and keeps 12 bits. Pitched
+down, that's the grainy, ringing low end; pitched up, it aliases. The EPS
+pitches smoothly, so CRUSH bakes the SP way into a new wavesample.
+
+1. **Edit**, cursor on **WS=**, press a key the sample plays.
+2. **8 Wave**, ◄ twice (once is CHOP): `CRUSH=PRESS ENTER`.
+3. **ENTER**: `CRUSH PITCH=+0?`. ▲ / ▼ pick -12 to +12 semitones,
+   **ENTER**.
+4. `CRUSH BITS=12?`. ▲ / ▼ pick **12** (the SP-1200's and the MPC60's),
+   **8** (dustier) or **OFF** (the EPS's own), **ENTER**.
+5. `CRUSHING`, then `CRUSHED: WS 5` (the new wavesample's number).
+   **CANCEL** at either question backs out.
+
+What you get:
+
+* A **new wavesample** on the same keys, playing the sound at the new
+  pitch from its ROOT KEY: `PITCH=-5` sounds 5 semitones lower, with the
+  SP's grain. Pitch down is the classic use: sample the record fast (45
+  rpm, or a few semitones up with TUNE before sampling), then CRUSH it
+  back down.
+* Everything else is copied: envelopes, filter, ROOT KEY, keys, MODE,
+  mute group; the loop points move with the pitch.
+* It becomes the edit wavesample, so **CHOP** right after chops the
+  crushed sound.
+* The original stays in memory, underneath it (its keys now play the
+  crushed one). To free its memory: Edit, at **WS=** pick the original's
+  number with ▲ / ▼ (note it before crushing), then DELETE WAVESAMPLE.
+* It needs memory for its own copy: a sample pitched down 12 is twice as
+  long. No room: `MEMORY FULL` and nothing changes.
+* Saved with the instrument, and it loads on a stock EPS (it's an
+  ordinary wavesample).
+
+Things to know:
+
+* Stop the sequencer first (`STOP SEQUENCER FIRST`), and pick one
+  wavesample (with **WS=ALL**: `NO EDIT WS SELECTED`).
+* `PITCH=+0, BITS=12` just makes a 12-bit copy. `BITS=OFF` with a pitch
+  gives the SP pitching without the 12-bit grit.
+* Crushing a crushed sample adds up: crush once, from the original.
+
 ## Sampling: FILTER CUTOFF up to 50 kHz, and SP sampling mode
 
 The EPS's input filter keeps high sounds from folding back down as
@@ -162,8 +206,10 @@ and cymbals.
 * **Dirtier than an SP:** 20.0 (the default here), 25.0, 33.3 or 50.0.
 * Every other rate works as on the stock EPS (FILTER CUTOFF is reset
   when you change the rate, so set it after).
-* Then trim, CHOP and pitch as usual. 12-bit crunch and SP-style
-  pitching are planned (CRUSH).
+* Then trim, **CRUSH** (12-bit and SP-style pitching, below) and CHOP.
+  The filter only decides how much grit gets in while sampling; most of
+  an SP-1200's sound is how it plays samples back, which is what CRUSH
+  does.
 
 (To make room, the factory service command MSB ADJUSTMENT now does
 nothing, like DC OFFSET ADJUSTMENT already did. It's a DAC trim for
@@ -195,8 +241,8 @@ the layer for you; TUNE's number counts only its own steps.)
   aside while you're in Command mode or sampling, and comes back when you
   leave. Sequence commands, disk commands and sampling work as always.
 * **Not saved:** QUANTIZE and SWING% (1/16 and 50 at power-on). Mute
-  groups, HIT, TUNE, chopped slices and tuning are saved with the
-  instrument.
+  groups, HIT, TUNE, chopped slices, crushed samples and tuning are
+  saved with the instrument.
 * **If you see an ERROR:** write down the number and what you just did,
   then power off and boot again.
 

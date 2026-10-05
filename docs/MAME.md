@@ -197,7 +197,14 @@ voice starts with their wavesample record. 19 checks.
 
 ```sh
 python3 mame/test_tune_hw.py     # TUNE on the Layer page (mame/keys/tune.txt)
+python3 mame/test_crush_hw.py    # CRUSH on the Wave page
 ```
+
+`mame/test_crush_hw.py` runs `mame/keys/crush.txt` (the TR 8O8 kick
+crushed at PITCH -5, BITS 12, then C2) and `mame/keys/crush_up.txt` (+7, 8
+bits) and checks every new sample against a Python model of the SP-style
+pick, plus the loop points, the copied parameters, the key map and the
+voice C2 starts. 16 checks.
 
 ## The mute group test (code area)
 
