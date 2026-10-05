@@ -72,7 +72,7 @@ tools/fetch.sh sounds && python3 mame/test_resident.py    # the hardware build (
 python3 mame/test_swing_hw.py                            # the swing build: loop recording, swing, mute, commands
 python3 mame/test_undo_hw.py                             # the swing build: loop undo (RECORD while loop recording)
 python3 mame/test_chop_hw.py                             # the swing build: CHOP (Edit, 8 Wave)
-python3 mame/test_tune_hw.py                             # the swing build: TUNE (Edit, 9 Layer)
+python3 mame/test_tune_hw.py                             # the swing build: TUNE (Edit, 4 Pitch)
 python3 mame/test_crush_hw.py                            # the swing build: CRUSH (Edit, 8 Wave)
 python3 mame/test_mutegroups.py                          # mute groups with a real kit (code area)
 python3 mame/test_loop_record.py                         # loop recording, auto-keep

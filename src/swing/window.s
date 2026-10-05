@@ -136,13 +136,17 @@ pages:  .word   0xC110, 0x2562, 0x2570, 0x2570
         aw      seq_index+2*12
         .word   0xC0E8, 0x224A, 0x2256, 0x2256
         aw      layer_index
-        aw      layer_index+2*8
-        aw      layer_index+2*8
+        aw      layer_index+2*7
+        aw      layer_index+2*7
         .word   0xC0F2, 0x24FA, 0x2518, 0x251E
         aw      wave_index
         aw      wave_index+2*17
         aw      wave_index+2*17
-        .equ    NPAGES, 4
+        .word   0xC138, 0x2572, 0x2582, 0x2582
+        aw      pitch_index
+        aw      pitch_index+2*9
+        aw      pitch_index+2*9
+        .equ    NPAGES, 5
 
 | Words in OS code that name the Seq·Song page's entries: when the Edit
 | pages switch between the sequence and song tables (0xFF3456), the OS
@@ -189,18 +193,12 @@ hooks:  .word   0x6746                  | the loop wrap: jsr 0x6AD6.w
         aw      rec_hook
         .equ    NHOOKS, 5
 
-| The Layer page (Edit, 9 Layer): its ROM entries, then TUNE (src/swing/
-| tune.s) and HIT: NORMAL, FULL LEVEL (velocity 127), ONE-SHOT (no release
-| at key-up for samples that don't loop), both. Layer record +0x2E
-| (src/swing/lvl.s).
+| The Layer page (Edit, 9 Layer): its ROM entries, then HIT: NORMAL, FULL
+| LEVEL (velocity 127), ONE-SHOT (no release at key-up for samples that
+| don't loop), both. Layer record +0x2E (src/swing/lvl.s).
 layer_index:
         .word   0x22C8, 0x22D0, 0x22D8, 0x22E0, 0x22E8, 0x22F0, 0x22F8
-        aw      tune_desc
         aw      hit_desc
-tune_desc:
-        .byte   0x07, CHOP_TYPE         | parameter 7, our type
-        .word   0, L_TUNE               | (w2 unused), where (layer record)
-        aw      tune_label
 hit_desc:
         .byte   0x06, 0x0E              | parameter 6, a choice
         aw      hit_choices
@@ -215,6 +213,17 @@ hit_labels:
         .asciz  "ONE-SHOT  "
         .asciz  "FULL+1SHOT"
         .balign 2
+
+| The 4 Pitch page: its ROM entries (ROOT KEY ... PITCH MOD), then TUNE
+| (src/swing/tune.s), per wavesample.
+pitch_index:
+        .word   0x2788, 0x2790, 0x2798, 0x27A0, 0x27A8, 0x27B0, 0x27B8, 0x27C0
+        .word   0x27C8
+        aw      tune_desc
+tune_desc:
+        .byte   0x08, CHOP_TYPE         | parameter 8, our type
+        .word   0, W_TUNE               | (w2 unused), where (wavesample record)
+        aw      tune_label
 
 | The Wave page (Edit, 8 Wave): its ROM entries, then CRUSH (src/swing/crush.s)
 | and CHOP (src/swing/chop.s), so ◄ from the first entry is CHOP, twice CRUSH.

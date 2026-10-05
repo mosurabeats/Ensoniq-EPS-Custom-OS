@@ -1,0 +1,18 @@
+# TUNE with WS=ALL: load TR 8O8, Edit (WS=ALL), 4 Pitch, ◄ = TUNE, ▼:
+# every wavesample of the edit layer a semitone lower.
+13.5 8f 00    # Load
+13.65 0f 00
+14.5 a3 00    # Enter·Yes
+14.65 23 00
+15.5 82 00    # instrument 1: load TR 8O8
+15.65 02 00
+32.0 82 00    # select instrument 1
+32.15 02 00
+33.5 85 00    # Edit (WS=ALL)
+33.65 05 00
+34.0 98 00    # 4 Pitch
+34.15 18 00
+34.6 90 00    # ◄: TUNE
+34.75 10 00
+35.2 8b 00    # ▼: -1
+35.35 0b 00

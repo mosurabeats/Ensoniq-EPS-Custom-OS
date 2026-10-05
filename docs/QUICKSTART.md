@@ -27,7 +27,7 @@ end. **▲ / ▼** or the slider change a value.
 |---|---|---|
 | MUTE GROUP | Edit, **6 Amp**, ◄ once | the instrument (per wavesample) |
 | HIT | Edit, **9 Layer**, ◄ once | the instrument (per layer) |
-| TUNE | Edit, **9 Layer**, ◄ twice | the instrument (per layer) |
+| TUNE | Edit, **4 Pitch**, ◄ once | the instrument (per wavesample) |
 | CHOP | Edit, **8 Wave**, ◄ once | (an action) |
 | CRUSH | Edit, **8 Wave**, ◄ twice | (an action: makes a new wavesample) |
 | SWING% / QUANTIZE | Edit, **Seq·Song**, ◄ once / twice | not saved: 1/16 and 50 at power-on |
@@ -162,8 +162,7 @@ What you get:
 * A **new wavesample** on the same keys, playing the sound at the new
   pitch from its ROOT KEY: `PITCH=-5` sounds 5 semitones lower, with the
   SP's grain. Pitch down is the classic use: sample the record fast (45
-  rpm, or a few semitones up with TUNE before sampling), then CRUSH it
-  back down.
+  rpm), then CRUSH it back down.
 * Everything else is copied: envelopes, filter, ROOT KEY, keys, MODE,
   mute group; the loop points move with the pitch.
 * It becomes the edit wavesample, so **CHOP** right after chops the
@@ -215,24 +214,34 @@ and cymbals.
 nothing, like DC OFFSET ADJUSTMENT already did. It's a DAC trim for
 service technicians.)
 
-## TUNE: pitch a whole instrument up or down
+## TUNE: pitch a sample (or everything) up or down
 
-Edit, **9 Layer**, ◄ twice (once is HIT): `TUNE=+0`.
+Edit, **4 Pitch**, ◄ once (from ROOT KEY): `TUNE=+0`.
 
 * **▲** = a semitone **up**, **▼** = a semitone **down**, from -16 to +15.
-  `TUNE=-5` plays everything 5 semitones lower than it was.
-* It moves **every wavesample of the layer** together, each keeping its
-  key: a kit or a chopped break is usually one layer, so that's the whole
-  instrument.
-* Saved with the instrument (the stock OS loads it fine).
+  `TUNE=-5` plays the sample 5 semitones lower than it was.
+* It's **per wavesample**, like ROOT KEY. Pick what it changes on the
+  Edit page's **WS=** field:
+  * **One sample:** cursor on **WS=**, press a key the sample plays.
+    Only that sample moves, and its TUNE shows its own number.
+  * **Everything:** **WS=ALL**. Every sample of the layer (a kit or a
+    break: usually the whole instrument) moves a semitone at each press,
+    each keeping its key and its own number.
+* **A new sample starts at TUNE=+0**, whatever the others are tuned to.
+  Sample a loop, TUNE it -5, sample the next one: it shows +0, and -5 on
+  it takes it down 5 too, without touching the first.
+* Saved with the instrument (the stock OS loads it fine). CHOP's slices
+  and CRUSH's copy keep the tuning and its number.
 * The old "sample the record at 45, play it at 33" trick: TUNE -5 (45 to
-  33 1/3 rpm is 5.2 semitones; FINE on the 4 Pitch page does the rest).
+  33 1/3 rpm is 5.2 semitones; FINE, next to ROOT KEY, does the rest).
 
-**Tuning just one sample:** the 4 Pitch page's **ROOT KEY** (stock EPS).
-It's the key that plays the sample at its original pitch, so it works
-backwards: raise ROOT KEY by one and the sample plays a semitone lower.
-**FINE** tunes between semitones. (TUNE works by moving every ROOT KEY of
-the layer for you; TUNE's number counts only its own steps.)
+TUNE works by moving the sample's **ROOT KEY** (the key that plays it at
+its original pitch) the other way: TUNE -1 = ROOT KEY one key higher. Its
+number counts only its own steps, so if you change ROOT KEY by hand TUNE
+doesn't follow. **FINE** tunes between semitones.
+
+(Instruments tuned with the earlier disk, where TUNE was on the 9 Layer
+page, keep their pitch; their TUNE just starts from +0 here.)
 
 ## Good to know
 

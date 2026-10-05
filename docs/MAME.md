@@ -196,7 +196,7 @@ instrument 1 before and after (`tools/instfile.py` reads it) and lists
 voice starts with their wavesample record. 19 checks.
 
 ```sh
-python3 mame/test_tune_hw.py     # TUNE on the Layer page (mame/keys/tune.txt)
+python3 mame/test_tune_hw.py     # TUNE on the 4 Pitch page (mame/keys/tune.txt, tune_all.txt)
 python3 mame/test_crush_hw.py    # CRUSH on the Wave page
 ```
 

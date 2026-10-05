@@ -1,6 +1,9 @@
-# TUNE on the Layer page (the swing build; times for its slower boot):
-# load TR 8O8, Edit, 9 Layer, ◄ = HIT, ◄ = TUNE (+0), ▼ ▼ = -2, ▲ = -1.
-# Buttons: docs/MAME.md (Edit 5, 9 Layer 37, ◄ 16, ▲ 10, ▼ 11).
+# TUNE on the 4 Pitch page (the swing build; times for its slower boot):
+# load TR 8O8, Edit, ► to WS, C2 (the kick, WS 1), 4 Pitch, ◄ = TUNE (+0),
+# ▼ ▼ = -2, ▲ = -1. Then Command, 8 Wave: CREATE NEW WAVESAMPLE (ENTER x4),
+# and Edit, 4 Pitch, ◄ on the new one (it's the edit wavesample): TUNE=+0.
+# Buttons: docs/MAME.md (Edit 5, 4 Pitch 24, ◄ 16, ► 17, ▲ 10, ▼ 11,
+# Command 6, 8 Wave 36, Enter 35).
 13.5 8f 00    # Load
 13.65 0f 00
 14.5 a3 00    # Enter·Yes
@@ -11,15 +14,35 @@
 32.15 02 00
 33.0 85 00    # Edit
 33.15 05 00
-33.6 a5 00    # 9 Layer
-33.75 25 00
-34.2 90 00    # ◄: HIT
-34.35 10 00
-34.8 90 00    # ◄: TUNE
-34.95 10 00
-35.4 8b 00    # ▼: -1
-35.55 0b 00
-36.0 8b 00    # ▼: -2
-36.15 0b 00
-36.6 8a 00    # ▲: -1
-36.75 0a 00
+33.5 91 00    # ►: the WS field
+33.65 11 00
+34.0 80 40    # C2: the kick's wavesample
+34.1 00 40
+34.5 98 00    # 4 Pitch
+34.65 18 00
+35.0 90 00    # ◄: TUNE
+35.15 10 00
+35.6 8b 00    # ▼: -1
+35.75 0b 00
+36.2 8b 00    # ▼: -2
+36.35 0b 00
+36.8 8a 00    # ▲: -1
+36.95 0a 00
+37.6 86 00    # Command
+37.75 06 00
+38.2 a4 00    # 8 Wave: CREATE NEW WAVESAMPLE
+38.35 24 00
+38.9 a3 00    # ENTER
+39.05 23 00
+39.6 a3 00    # ENTER
+39.75 23 00
+40.3 a3 00    # ENTER
+40.45 23 00
+41.0 a3 00    # ENTER
+41.15 23 00
+42.0 85 00    # Edit
+42.15 05 00
+42.6 98 00    # 4 Pitch: TUNE of the new wavesample
+42.75 18 00
+43.2 90 00    # ◄: TUNE=+0
+43.35 10 00

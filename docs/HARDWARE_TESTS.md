@@ -160,10 +160,13 @@ Everything on `EPS249_SWING`, plus:
   instead (they stop sounding right away). One press per pass: a second
   press in the same pass does nothing. No message on the display. Undone
   notes are gone for good at the next loop wrap or at STOP + KEEP = NEW.
-* **TUNE** on the Layer page: Edit, **9 Layer**, ◄ twice (once is HIT):
-  `TUNE=+0`. ▲ / ▼ move the whole layer (a kit or a break: the whole
-  instrument) a semitone up / down, -16 to +15, by moving every
-  wavesample's ROOT KEY. Saved with the instrument (layer record +0x2F).
+* **TUNE** on the 4 Pitch page, per wavesample: Edit, **4 Pitch**, ◄
+  once: `TUNE=+0`. ▲ / ▼ move the edit wavesample a semitone up / down,
+  -16 to +15, by moving its ROOT KEY; with WS=ALL every wavesample of the
+  layer. Kept in the wavesample (record +0x11D), so a new sample starts
+  at +0. (The first version was per layer, on the 9 Layer page: a sample
+  added after tuning showed the layer's number although it hadn't moved.
+  Found on the hardware, 2026-10-05.)
 * **CHOP** (automatic chopping): pick a wavesample in Edit (Edit, ► to
   the WS field, press a key it plays), then **8 Wave** and ◄ once from the
   first parameter: `CHOP=PRESS ENTER`. ENTER: `CHOP INTO 16 SLICES?`, ▲ / ▼
@@ -237,9 +240,11 @@ needed the key held. A new wavesample on the EPS is MODE = LOOP FORWARD
 (checked in MAME: CREATE NEW WAVESAMPLE gives mode 2, soft velocity
 levels 64 against 127 hard), and ONE-SHOT leaves looping samples alone by
 design. Next: ONE-SHOT on CHOP's slices (NO LOOP), or with MODE =
-FORWARD-NO LOOP; FULL LEVEL on very soft hits. `mame/test_tune_hw.py` (6 checks): TUNE ▼ ▼ ▲ on the
-TR 8O8 shows +0, -1, -2, -1 and leaves every wavesample of layer 1 one
-semitone lower, layer 2 untouched.
+FORWARD-NO LOOP; FULL LEVEL on very soft hits. `mame/test_tune_hw.py` (9 checks): TUNE ▼ ▼ ▲ on
+the TR 8O8's kick shows +0, -1, -2, -1 and leaves the kick one semitone
+lower, the rest untouched; four CREATE NEW WAVESAMPLEs after it start at
++0 (record and display); with WS=ALL, ▼ moves every wavesample of layer 1,
+layer 2 untouched.
 
 **Try:** the swing test above, then HIT: set FULL+1SHOT on a drum kit's
 layer and play soft and hard, short taps on long samples. Tell us whether
@@ -256,13 +261,16 @@ run the filter chip faster than the stock OS ever does, so tell us if
 they sound wrong (silence, a whine, distortion, much more noise) or the
 level meter behaves oddly. Check that other rates still pick their usual
 filter, and that normal sampling (e.g. 31.25 KHZ) sounds as before.
-TUNE: load a kit, TUNE -5 then +3: every pad lower then higher, each on
-its own key; save, reload, TUNE still shows the number.
+TUNE: sample a loop, TUNE it -5 (WS = that sample), sample a second one
+into the same instrument: it should show TUNE=+0 and play at its own
+pitch, and -5 on it shouldn't move the first. Then WS=ALL on a kit, TUNE
+-5 then +3: every pad lower then higher, each on its own key; save,
+reload, TUNE still shows the numbers.
 Then CHOP: sample (or load) a drum break into its own instrument, trim it
 to a bar or two, chop it into 16 and play the slices. Tell us whether the
 cuts sound clean and land on the hits, and whether SAVE INSTRUMENT and
 loading it back keep the slices.
-CRUSH: sample a break with TUNE (or the turntable) a few semitones up,
+CRUSH: sample a break a few semitones up (45 rpm, or the turntable's pitch),
 then CRUSH it PITCH -5 (or however far you went up), BITS 12, and compare
 with the original on the same key range: it should sound grainier and
 ring in the lows, like an SP-1200 pitched down. Try +5 / 8 bits on hats

@@ -994,18 +994,23 @@ wrote the count through a6, which the OS's message loop (`0xFF1790`)
 reloads: a6 is set again at the top of the loop now (MAME:
 `mame/keys/chop_eight.txt`).
 
-**TUNE** (`src/swing/tune.s`). Edit, 9 Layer, before HIT: semitones for
-the whole layer, -16..+15, kept in the layer record's spare byte +0x2F
-(the low byte of the key-20 map slot; HIT is its high byte; zero in all
-factory layers, nothing reads it) in bits 7-3. ▲/▼ move every
-wavesample's ROOT KEY (+0xAA) of the layer the other way (walking the
-layer's chain: layer +6, then each record's +6), checking first that all
-stay 0-127. The wavesample record has no spare byte for it: the voice
-start reads ROOT KEY as a word (`0xFFB34E`, `0xFFB374`), so +0xAB is a
-fraction of a semitone. The entry shares CHOP's parameter type (0x17):
-the display and edit handlers pick by descriptor; after a change the
-edit goes to `0xFF44E0`, as the OS's own edits do (it redraws). With
-LYR=ALL the OS calls the edit once per layer. MAME:
+**TUNE** (`src/swing/tune.s`). Edit, 4 Pitch, after the ROM's entries
+(page record `0xFFC138`; its index `0xC02572`-`0xC02582` points at the
+descriptors `0xC02788`-`0xC027C8`): semitones per wavesample, -16..+15,
+kept in the wavesample record's spare byte +0x11D (bits 7-3; zero in all
+factory wavesamples and in the ROM's new-wavesample template `0xC02DA4`,
+which sampling and CREATE NEW WAVESAMPLE copy through `0xFFA280` /
+`0xC09182`, so a new sample starts at 0; nothing reads it). ▲/▼ move the
+record's ROOT KEY (+0xAA) the other way, checking first that it stays
+0-127. The voice start reads ROOT KEY as a word (`0xFFB34E`, `0xFFB374`),
+so +0xAB is a fraction of a semitone, not a free byte. With WS=ALL the OS
+calls the edit once per wavesample of the edit layer, so each moves by
+one. COPY WAVESAMPLE (`0xC0901C`: +10..+0x11F), CHOP and CRUSH copy it.
+The entry shares CHOP's parameter type (0x17): the display and edit
+handlers pick by descriptor; after a change the edit goes to `0xFF44E0`,
+as the OS's own edits do (it redraws). The first version kept one number
+per layer (layer +0x2F, on the 9 Layer page); a sample added later showed
+that number without having moved (found on the hardware). MAME:
 `mame/test_tune_hw.py`.
 
 **CRUSH** (`src/swing/crush.s`). Edit, 8 Wave, the entry before CHOP
@@ -1044,7 +1049,7 @@ be exchanged out from under a running hook.
 
 What we have now, all measured on 13-bit sample RAM:
 * **Window region** (`0xFFE400-0xFFFFDF`, swapped in outside Command mode):
-  7136 bytes, 5196 used (swing, loop undo, CHOP, TUNE, CRUSH,
+  7136 bytes, 5178 used (swing, loop undo, CHOP, TUNE, CRUSH,
   patch/unpatch, page tables).
   Real-time hooks that only need to work in play/Edit mode (the sequencer
   ones) can live here. This is where the next features go.
