@@ -173,7 +173,13 @@ page (`mame/keys/panel_inst.txt`). 16 checks.
 
 ```sh
 python3 mame/test_undo_hw.py     # loop undo on the hardware build
+python3 mame/test_wrap_hw.py     # how long each loop wrap holds up the sequencer
 ```
+
+`mame/test_wrap_hw.py` loop records a light take and a busy one (16th hats
+over every pass, some held over the loop point), times the wrap hook in
+CPU cycles at each wrap (under 2.5 and 10 ms) and checks the take kept
+with NEW is on the 1/16 grid. 6 checks.
 
 Two runs in parallel: `mame/keys/loop_undo.txt` (G2 played in pass 2,
 then RECORD: gone from pass 3 on; a second RECORD in pass 3 does nothing)

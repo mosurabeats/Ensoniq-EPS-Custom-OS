@@ -201,7 +201,7 @@ Everything on `EPS249_SWING`, plus:
   nothing: its code made room.
 * Behind the scenes: the borrowed part of the OS is now the whole
   sequence-commands overlay except its first kilobyte (room for about 7 KB
-  of our code, 5.1 KB used), and our code steps aside whenever you're in
+  of our code, 6.1 KB used), and our code steps aside whenever you're in
   Command mode or sampling, so those always see the stock OS.
 
 MAME (13-bit sample RAM, boot ROM 2.40, `mame/test_swing_hw.py`, 16
@@ -234,6 +234,15 @@ Both fixed; MAME now goes ▼ ▼ to 8.
 
 **CHOP, second hardware test (2026-10-05, the disk with both fixes):
 works**: the loop chops into slices that play in order.
+
+**Loop recording lag (2026-10-05, video):** the first hit of every pass
+came in about 20-25 ms late against the hits around it, only while loop
+recording (plain playback after STOP was on time at the same spot). The
+quantizer re-encoded the whole take at every loop point and the next pass
+waited for it: 29 ms in MAME for a busy take. Fixed: only the new notes
+move, in place (`mame/test_wrap_hw.py`: 1.3 ms a wrap for a light take,
+under 7 ms for 16th hats over three passes, the kept take on the grid).
+Please loop record a busy beat again and listen to the downbeat.
 
 **HIT, first hardware test:** no setting changed the fresh sample, and it
 needed the key held. A new wavesample on the EPS is MODE = LOOP FORWARD

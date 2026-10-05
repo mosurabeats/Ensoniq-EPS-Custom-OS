@@ -86,8 +86,9 @@ that's the whole instrument. Saved with the instrument.
    quantized.
 
 QUANTIZE and SWING% apply only while loop recording. The notes saved are
-ordinary notes, so the sequence saves and loads normally. A key held over
-the loop point snaps one pass later.
+ordinary notes, so the sequence saves and loads normally. A hit played
+just before the loop point and still held when the loop comes round snaps
+to the start one pass later.
 
 ## Loop undo
 

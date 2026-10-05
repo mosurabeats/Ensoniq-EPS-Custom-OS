@@ -869,9 +869,9 @@ choice table points there). Grids at 48 ticks per quarter: 48, 32, 24, 16,
 round(2 x grid x % / 100) - grid on odd grid lines.
 
 **Hooks.** `0xFF6746` (`jsr 0x6AD6` at a LOOPED wrap, after the take is
-finished): the finished take is quantized, unless a key is held (the OS
-keeps pointers into the take for held notes, `0xFF8134`; they snap at the
-next wrap). `0xFF6B7C` (`jsr 0x74F2`, the commit after KEEP): a LOOPED
+finished): the finished take is quantized (the fast path below, else sq),
+never re-encoded while a key is held (the OS keeps pointers into the take
+for held notes, `0xFF8134`; they snap at the next wrap). `0xFF6B7C` (`jsr 0x74F2`, the commit after KEEP): a LOOPED
 take kept with NEW is quantized (buffer A). The KEEP prompt is untouched.
 
 **The quantizer** (`src/swing/sq.s`, same result as
@@ -885,6 +885,40 @@ written, and the event format keeps bits 3-0 at 0, so it's 13-bit safe.
 Sequence memory starts at `0x580000` (sample RAM); recorded takes are the
 same word for word with 13- and 16-bit sample RAM in MAME, and the note's
 instrument isn't in bits 3-0 (all 0): a take is one track.
+
+**The wrap must be quick** (found on the hardware, 2026-10-05: a video of
+loop recording showed the first hit of every pass 20-25 ms late, and only
+while loop recording). The sequencer task runs the wrap hook before it
+plays the next pass's first events, so whatever the hook spends delays
+them. sq re-encodes the whole take at every wrap: measured in MAME
+(`mame/test_wrap_hw.py`, cycles between `0xFF6746` and `0xFF674A`), 0.5-5
+ms for a light take and 29 ms for one-bar 16th hats over three passes
+(10 MHz; sq walks the take three times, about 4000 cycles an event).
+Now the wrap usually runs **sqf** (`src/swing/sq.s`), the fast path:
+* Only the notes played in the pass just finished move (tagged, bit 3 of
+  their last word, by the undo code: exactly the new ones when U_NEW is
+  set); the others are on the grid already. Nothing new: nothing to do.
+* A note (or a chord: tagged notes at one time) that doesn't pass another
+  event on its way to its grid line changes only two gaps, in place: the
+  event before it and its own (7-bit gaps, or a time event's 14 bits).
+  No event moves, so it's also safe while keys are held.
+* A note landing on or after END wraps to the floor as in sq: taken out
+  (the event before takes its gap), put back after the events at the
+  floor (before a time event there, gap 0; else after the last event, which
+  gets gap 0), what's between moving up. Not while keys are held (it would
+  move held notes): then that chord waits for the next wrap and the rest
+  is done.
+* One scan, notes decoded inline, the grid line followed along instead of
+  a division per note. Anything else (a note passing another event, a gap
+  that doesn't fit) gives up and sq does the whole take, with the same
+  result: the notes moved so far are where sq puts them.
+* Every note, not just the tagged ones, at the first wrap of a recording
+  (the track's earlier notes), when QUANTIZE or SWING% changed, and after
+  a wrap that left notes (U_FULL); sq after an undo.
+Same events at the same times as sq (time events may differ):
+`tests/test_sq.py` (random passes, chords, wraps, every-note mode, keys
+held). MAME: the light take 1.3 ms at each wrap, the busy one 3.7, 4.6 and
+6.8 ms (all of it: the OS's own `0x6AD6` is about 0.6 ms).
 
 **HIT** (FULL LEVEL / ONE-SHOT). Storage had to be a high byte nothing
 uses: no wavesample word is free besides `0x11E` (78 factory wavesamples:
@@ -1049,7 +1083,7 @@ be exchanged out from under a running hook.
 
 What we have now, all measured on 13-bit sample RAM:
 * **Window region** (`0xFFE400-0xFFFFDF`, swapped in outside Command mode):
-  7136 bytes, 5178 used (swing, loop undo, CHOP, TUNE, CRUSH,
+  7136 bytes, 6194 used (swing, loop undo, CHOP, TUNE, CRUSH,
   patch/unpatch, page tables).
   Real-time hooks that only need to work in play/Edit mode (the sequencer
   ones) can live here. This is where the next features go.

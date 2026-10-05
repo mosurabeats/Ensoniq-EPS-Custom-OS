@@ -246,6 +246,346 @@ insert: cmpi.w  #NBMAX,V_NB(a5)
         adda.l  d3,a6
         rts
 
+| ------------------------------------------------------------- sqf
+| The fast path at a loop wrap: only the notes played in the pass just
+| finished (tagged, bit 3 of their last word: src/swing/window.s, undo)
+| move, in place, the others being on the grid already. A note (or a
+| chord of them: tagged notes at one time) that doesn't pass another
+| event on its way to its grid line only changes two gaps: the one in the
+| event before it and its own. One scan, no copy: a few hundred cycles a
+| note instead of sq's re-encode of the whole take, which held up the
+| first notes of the next pass (about 30 ms for a busy one-bar take).
+| Anything else (a note passing another event, wrapping to the start, a
+| gap that doesn't fit its event) gives up: sq then does the whole take,
+| with the same result (the notes moved so far are where sq puts them).
+| In:  a0 = take, a1 = its end, d1.w = grid (not 0), d2.w = swing offset,
+|      d0.b: bit 0: every note, not just the tagged ones (the take's
+|      earlier notes may be off this grid: the first wrap, QUANTIZE
+|      changed); bit 1: keys held (no event may move: the OS keeps
+|      pointers into the take for held notes).
+| Out: carry clear: done; set: sq needed (keys held: the rest is done,
+|      sq or sqf's next run does what's left). Keeps d1, d2, a0, a1, a4.
+|
+| A chord that lands on or after END wraps to the floor, as in sq: it's
+| taken out (the event before it takes its gap) and put back right after
+| the events at the floor, what's in between moving up by its length.
+        .equ    F_DELTA,  V_PT          | (sq's variables: sq starts afresh)
+        .equ    F_PREV,   V_PPOS        | the event before (0: none),
+        .equ    F_PLEN,   V_PLEN        | its length,
+        .equ    F_PGAP,   V_NW          | its gap,
+        .equ    F_PCODE,  V_WLEFT       | its code
+        .equ    F_ALL,    V_KILL        | the flags (d0)
+        .equ    F_FIRST,  V_OUT0        | the chord's first note
+        .equ    F_D,      V_END         | wrapping: the last event at the floor,
+        .equ    F_DLEN,   V_EOFF        | its length,
+        .equ    F_DCODE,  V_ELEN        | its code;
+        .equ    F_INS,    V_WRP         | where the chord goes,
+        .equ    F_CG,     V_NB          | its gap there
+        .equ    F_SKIP,   V_PREV        | keys held: a chord left as it was
+        .equ    F_LINE,   V_SP          | qtrack: the grid line below,
+        .equ    F_PAR,    V_WDONE       | its parity
+        .globl  sqf
+sqf:    lea     sqv(pc),a5
+        move.b  d0,F_ALL(a5)
+        clr.l   V_FLOOR(a5)
+        sf      V_SEEN(a5)
+        clr.l   F_PREV(a5)
+        sf      F_SKIP(a5)
+        clr.l   F_LINE(a5)
+        sf      F_PAR(a5)
+        moveq   #0,d7                   | the time of the event at a6
+        movea.l a0,a6
+1:      cmpa.l  a1,a6
+        bhs     90f
+        movea.l a6,a3
+        move.w  (a6),d0
+        move.w  d0,d4
+        lsr.w   #4,d4
+        andi.w  #0xFF,d4
+        cmpi.w  #0xB0,d4
+        bcc.s   2f
+        moveq   #6,d3                   | a note (3 words): as evnext, quicker
+        addq.l  #6,a6
+        moveq   #0,d5
+        move.w  d0,d5
+        andi.w  #0x7000,d5
+        lsr.w   #8,d5
+        move.w  -2(a6),d6
+        andi.w  #0x7800,d6
+        rol.w   #5,d6
+        or.w    d6,d5
+        bra.s   10f
+2:      bsr     evnext                  | d3 length, d4 code, d5 gap
+        cmpi.w  #C_TIME,d4
+        beq.s   8f
+        tst.b   V_SEEN(a5)
+        bne.s   8f
+        move.l  d7,V_FLOOR(a5)          | (as sq: the floor)
+8:      move.w  d5,F_PGAP(a5)
+        add.l   d5,d7
+9:      move.l  a3,F_PREV(a5)
+        move.w  d3,F_PLEN(a5)
+        move.w  d4,F_PCODE(a5)
+        bra.s   1b
+10:     st      V_SEEN(a5)
+        btst    #0,F_ALL(a5)
+        bne.s   16f
+        btst    #3,5(a3)
+        beq.s   8b                      | an earlier pass's: on the grid
+16:     cmp.l   V_FLOOR(a5),d7
+        beq.s   8b                      | at the floor: stays
+        move.l  d7,d0
+        bsr     qtrack
+        cmp.l   V_FLOOR(a5),d0
+        bge.s   11f
+        move.l  V_FLOOR(a5),d0
+11:     sub.l   d7,d0
+        beq.s   8b
+        move.l  d0,F_DELTA(a5)
+        move.l  a3,F_FIRST(a5)
+12:     tst.l   d5                      | the chord: tagged notes at this time
+        bne.s   13f
+        cmpa.l  a1,a6
+        bhs.s   13f
+        move.w  (a6),d0
+        lsr.w   #4,d0
+        andi.w  #0xFF,d0
+        cmpi.w  #0xB0,d0
+        bcc.s   13f
+        btst    #0,F_ALL(a5)
+        bne.s   17f
+        btst    #3,5(a6)
+        beq.s   13f
+17:     movea.l a6,a3
+        bsr     evnext
+        bra.s   12b
+| a3 = its last note, d5 = that one's gap (to the event at a6).
+13:     move.l  F_DELTA(a5),d0
+        move.l  d5,d4
+        sub.l   d0,d4                   | its own gap, new
+        bmi     20f                     | past the event after: END?
+        bne.s   14f
+        cmpa.l  a1,a6
+        bhs.s   14f
+        move.w  (a6),d6
+        lsr.w   #4,d6
+        andi.w  #0xFF,d6
+        cmpi.w  #0xB0,d6
+        bcc     20f                     | onto a non-note: END?
+14:     cmpi.l  #127,d4
+        bhi     18f
+        moveq   #0,d6
+        move.w  F_PGAP(a5),d6
+        add.l   d0,d6                   | the gap before it, new
+        bmi     18f                     | (it would pass the event before)
+        bsr     pfit
+        bcs     18f
+        move.w  d6,d0                   | the event before
+        move.w  F_PCODE(a5),d6
+        bsr     setgap
+        movea.l a3,a2                   | the chord's last note
+        moveq   #6,d3
+        move.w  d4,d0
+        moveq   #0,d6
+        bsr     setgap
+        add.l   d5,d7                   | (the next event's time as it was)
+        move.w  d4,F_PGAP(a5)
+        move.w  (a3),d4
+        lsr.w   #4,d4
+        andi.w  #0xFF,d4
+        bra     9b
+
+| Not in place. Keys held: this chord waits for the next wrap (nothing may
+| move now, and sq can't run), the others go on; else sq does the take.
+18:     btst    #1,F_ALL(a5)
+        beq     91f
+19:     st      F_SKIP(a5)
+        moveq   #6,d3
+        move.w  (a3),d4
+        lsr.w   #4,d4
+        andi.w  #0xFF,d4
+        bra     8b
+
+| Past the next event: fine if it lands on or after END (it wraps).
+20:     btst    #1,F_ALL(a5)
+        bne.s   19b                     | keys held: nothing may move
+        movem.l d5/d7/a3/a6,-(sp)
+        add.l   d5,d7
+21:     cmpa.l  a1,a6
+        bhs     28f
+        bsr     evnext
+        cmpi.w  #C_END,d4
+        beq.s   22f
+        add.l   d5,d7
+        bra.s   21b
+22:     move.l  4(sp),d0                | its time
+        add.l   F_DELTA(a5),d0
+        cmp.l   d7,d0
+        blt     28f                     | before END: it would pass an event
+        movea.l a0,a6                   | P: the first event after the floor,
+        moveq   #0,d7                   | D: the one before it
+23:     movea.l a6,a3
+        bsr     evnext
+        cmp.l   V_FLOOR(a5),d7
+        bgt.s   24f
+        move.l  a3,F_D(a5)
+        move.w  d3,F_DLEN(a5)
+        move.w  d4,F_DCODE(a5)
+        add.l   d5,d7
+        bra.s   23b
+24:     sub.l   V_FLOOR(a5),d7          | G: from the floor to P
+        cmpa.l  F_FIRST(a5),a3
+        beq     28f                     | (P is the chord itself)
+        moveq   #0,d6
+        cmpi.w  #C_TIME,F_DCODE(a5)
+        bne.s   25f
+        movea.l F_D(a5),a3              | D a time event: before it, gap 0
+        bra.s   26f
+25:     cmpi.w  #2,F_DLEN(a5)
+        bls     28f
+        cmpi.l  #127,d7
+        bhi     28f
+        move.l  d7,d6                   | else after D (its gap 0): gap G
+26:     move.l  a3,F_INS(a5)
+        move.w  d6,F_CG(a5)
+        movem.l (sp)+,d5/d7/a3/a6
+        move.l  a6,d0
+        sub.l   F_FIRST(a5),d0          | its length
+        cmpi.l  #NBMAX*8,d0
+        bhi     91f
+        moveq   #0,d6
+        move.w  F_PGAP(a5),d6
+        add.l   d5,d6                   | the event before takes its gap
+        bsr     pfit
+        bcs     91f
+        move.w  d6,d0
+        move.w  F_PCODE(a5),d6
+        bsr     setgap
+        cmpi.w  #C_TIME,F_DCODE(a5)
+        beq.s   27f
+        movea.l F_D(a5),a2
+        move.w  F_DLEN(a5),d3
+        move.w  F_DCODE(a5),d6
+        moveq   #0,d0
+        bsr     setgap
+27:     movea.l a3,a2
+        moveq   #6,d3
+        move.w  F_CG(a5),d0
+        moveq   #0,d6
+        bsr     setgap
+        lea     sqbuf(pc),a2            | the chord aside,
+        movea.l F_FIRST(a5),a3
+30:     cmpa.l  a6,a3
+        bhs.s   31f
+        move.w  (a3)+,(a2)+
+        bra.s   30b
+31:     movea.l F_FIRST(a5),a3          | what's in between up,
+        movea.l a6,a2
+32:     cmpa.l  F_INS(a5),a3
+        bls.s   33f
+        move.w  -(a3),-(a2)
+        bra.s   32b
+33:     lea     sqbuf(pc),a2            | the chord in
+        movea.l F_INS(a5),a3
+        move.l  a6,d0
+        sub.l   F_FIRST(a5),d0
+        add.l   d0,F_PREV(a5)           | (the event before moved up too)
+        lsr.w   #1,d0
+        bra.s   35f
+34:     move.w  (a2)+,(a3)+
+35:     dbra    d0,34b
+        add.l   d5,d7
+        add.w   d5,F_PGAP(a5)
+        bra     1b
+28:     movem.l (sp)+,d5/d7/a3/a6
+        bra.s   91f
+90:     tst.b   F_SKIP(a5)
+        bne.s   91f
+        andi.b  #0xFE,ccr
+        rts
+91:     ori.b   #1,ccr
+        rts
+
+| quantize for sqf, whose times only go up: no division, the grid line
+| below the time and its parity are followed along (a long way: divide).
+| d0 = time -> quantized. Keeps the others.
+qtrack: movem.l d3-d6,-(sp)
+        move.l  d0,d3
+        sub.l   F_LINE(a5),d3           | r
+        move.l  d1,d4
+        lsl.l   #3,d4
+        cmp.l   d4,d3
+        bcc.s   3f
+1:      cmp.l   d1,d3
+        bcs.s   2f
+        sub.l   d1,d3
+        add.l   d1,F_LINE(a5)
+        bchg    #0,F_PAR(a5)
+        bra.s   1b
+2:      swap    d3                      | r:s as the division leaves them
+        clr.w   d3                      | (s: its parity)
+        move.b  F_PAR(a5),d3
+        bra     qback
+3:      move.l  d0,d3
+        divu.w  d1,d3
+        bvs     qdone
+        move.l  d3,d4
+        swap    d4
+        andi.l  #0xFFFF,d4
+        move.l  d0,d5
+        sub.l   d4,d5
+        move.l  d5,F_LINE(a5)
+        moveq   #1,d5
+        and.b   d3,d5
+        move.b  d5,F_PAR(a5)
+        bra     qback
+
+| The event before (F_PREV): a2, d3 = its length. Carry set if gap d6
+| (>= 0) doesn't fit in it (or there's none, or it's 1-word).
+pfit:   move.l  F_PREV(a5),d3
+        beq.s   8f
+        movea.l d3,a2
+        move.w  F_PLEN(a5),d3
+        cmpi.w  #2,d3
+        bls.s   8f
+        cmpi.l  #MAX_TIME,d6
+        bhi.s   8f
+        cmpi.w  #C_TIME,F_PCODE(a5)
+        beq.s   9f
+        cmpi.l  #127,d6
+        bhi.s   8f
+9:      andi.b  #0xFE,ccr
+        rts
+8:      ori.b   #1,ccr
+        rts
+
+| Set the gap of the event at a2 (d3 bytes, code d6.w) to d0.w. 13-bit
+| safe: bits 3-0 are kept. Uses d6.
+setgap: cmpi.w  #C_TIME,d6
+        beq.s   2f
+        move.w  d0,d6                   | high 3 bits in w0 14-12, low 4 in
+        lsl.w   #8,d6                   | its last word 14-11
+        andi.w  #0x7000,d6
+        andi.w  #0x8FFF,(a2)
+        or.w    d6,(a2)
+        move.w  d0,d6
+        ror.w   #5,d6
+        andi.w  #0x7800,d6
+        andi.w  #0x87FF,-2(a2,d3.w)
+        or.w    d6,-2(a2,d3.w)
+        rts
+2:      move.w  d0,d6                   | time: bits 13-11 in w0 14-12,
+        add.w   d6,d6                   | 10-0 in w1 14-4
+        andi.w  #0x7000,d6
+        andi.w  #0x8FFF,(a2)
+        or.w    d6,(a2)
+        move.w  d0,d6
+        lsl.w   #4,d6
+        andi.w  #0x7FF0,d6
+        andi.w  #0x800F,2(a2)
+        or.w    d6,2(a2)
+        rts
+
 | Emit the wrapping notes at the floor (once).
 wraps:  st      V_WDONE(a5)
         movem.l d0/d3/d6/a3,-(sp)
@@ -388,7 +728,7 @@ quantize:
         move.l  d0,d3
         divu.w  d1,d3                   | d3 = r:s
         bvs.s   9f                      | (time / grid > 65535: leave it)
-        move.l  d3,d4
+qback:  move.l  d3,d4
         swap    d4
         andi.l  #0xFFFF,d4              | d4 = r
         moveq   #0,d5                   | d5 = e
@@ -411,7 +751,8 @@ quantize:
         add.l   d6,d0
         bra.s   9f
 4:      add.l   d5,d0                   | line s
-9:      movem.l (sp)+,d3-d6
+9:
+qdone:  movem.l (sp)+,d3-d6
 99:     rts
 
 | Variables (a5) and buffers.

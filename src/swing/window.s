@@ -302,10 +302,14 @@ swing_label:
         .equ    TAKE_HDR,   28
 
 | At a loop wrap (0xFF6746, LOOPED wraps only), after 0x6AD6 finished the
-| take (gap to the loop end, END), before 0x6B2E stores its length. Not
-| while a key is held: the OS keeps pointers into the take for held notes'
-| durations (0xFF8134), which a re-encode would break; the next wrap gets
-| those notes.
+| take (gap to the loop end, END), before 0x6B2E stores its length. The
+| notes move in place (sqf: quick, so the next pass starts on time): the
+| ones played in that pass, or every note at the first wrap of a recording
+| and when QUANTIZE or SWING% changed. The whole take is re-encoded (sq)
+| after an undo and when sqf gives up (a note passing another event or
+| wrapping to the start). Not while a key is held: the OS keeps pointers
+| into the take for held notes' durations (0xFF8134), which a re-encode
+| would break; the next wrap does it.
 wrap_hook:
         jsr     0x6AD6.w                | the call we replaced
         movem.l d0-d7/a0-a6,-(sp)
@@ -313,16 +317,51 @@ wrap_hook:
         bsr     settings
         bne.s   1f
         tst.b   U_KILL(a4)
-        beq.s   8f                      | no quantize, nothing undone
-1:      tst.w   OPEN_NOTES.w
-        bne.s   7f
-        move.l  WRITE_PTR.w,d3          | end of the finished take
+        beq     8f                      | no quantize, nothing undone
+1:      move.l  WRITE_PTR.w,d3          | end of the finished take
         bsr     wbuf
+        move.b  U_KILL(a4),d0
+        bne.s   5f                      | an undo: the whole take
+        cmp.w   U_GRID(a4),d1
+        beq.s   2f
+        st      U_FULL(a4)              | QUANTIZE or SWING% changed
+2:      cmp.w   U_OFF(a4),d2
+        beq.s   3f
+        st      U_FULL(a4)
+3:      moveq   #0,d0               | sqf's flags: bit 0 every note,
+        tst.w   OPEN_NOTES.w            | bit 1 keys held
+        beq.s   30f
+        moveq   #2,d0
+30:     tst.b   U_FULL(a4)
+        beq.s   31f
+        addq.b  #1,d0
+        bra.s   32f
+31:     tst.b   U_NEW(a4)
+        beq.s   8f                      | nothing new: on the grid already
+32:     movea.l SEQ_BASE.w,a0           | in place (sq.s, sqf)
+        lea     0(a0,d3.l),a1
+        lea     TAKE_HDR(a0,d4.l),a0
+        movem.l d0-d4/a4,-(sp)
+        bsr     sqf
+        movem.l (sp)+,d0-d4/a4
+        bcs.s   5f                      | it gave up: the whole take
+        btst    #0,d0
+        beq.s   8f
+        bra.s   6f                      | every note on the grid
+5:      tst.w   OPEN_NOTES.w
+        bne.s   7f
+        move.w  d1,U_GRID(a4)
+        move.w  d2,U_OFF(a4)
         move.b  U_KILL(a4),d0
         bsr     qbuf
         clr.b   U_KILL(a4)              | the undone notes are gone
+        bra.s   61f
+6:      move.w  d1,U_GRID(a4)
+        move.w  d2,U_OFF(a4)
+61:     sf      U_FULL(a4)
         bra.s   8f
-7:      tst.b   U_KILL(a4)              | a key held: no re-encode; undone
+7:      st      U_FULL(a4)              | (those notes: the next wrap)
+        tst.b   U_KILL(a4)              | a key held: no re-encode; undone
         beq.s   8f                      | notes left in the take are skipped
         move.b  #2,U_KILL(a4)           | as it plays next time
 8:      clr.b   U_NEW(a4)               | a new pass
@@ -357,7 +396,8 @@ stop_hook:
         lea     TAKE_HDR(a0),a0
         adda.l  WRITE_PTR.w,a1
         bsr     untag
-8:      clr.w   U_NEW(a4)               | (U_NEW, U_KILL) a new recording
+8:      clr.w   U_NEW(a4)               | (U_NEW, U_KILL) a new recording:
+        st      U_FULL(a4)              | its first wrap does the whole take
 9:      movem.l (sp)+,d0-d7/a0-a6
         rts
 
@@ -373,6 +413,9 @@ stop_hook:
 | last pass's. docs/ANALYSIS.md -> Swing build.
         .equ    U_NEW,      0           | this pass has notes played
         .equ    U_KILL,     1
+        .equ    U_FULL,     2           | the next wrap: the whole take
+        .equ    U_GRID,     4           | grid and swing offset of the last
+        .equ    U_OFF,      6           | whole-take quantize
         .equ    REC_FLAGS,  0x815A      | bit 1: recording a new sequence
         .equ    SEQ_STATE,  0x8028
         .equ    ST_RECORDING, 0x58D6
@@ -486,7 +529,8 @@ loop_rec:
 9:      rts
 
         .balign 2
-undo:   .byte   0, 0                    | U_NEW, U_KILL
+undo:   .byte   0, 0, 1, 0              | U_NEW, U_KILL, U_FULL
+        .word   0, 0                    | U_GRID, U_OFF
 
 | Quantize the take in the buffer at offset d4 (end offset d3), then move
 | the write pointer to its new end. d1/d2: grid, offset.

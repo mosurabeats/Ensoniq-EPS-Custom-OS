@@ -12,6 +12,7 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.dirname(__file__))
 from emu import EPS  # noqa: E402
+from unicorn.m68k_const import UC_M68K_REG_SR  # noqa: E402
 import mkhook  # noqa: E402
 import seqstream as S  # noqa: E402
 import swing  # noqa: E402
@@ -21,6 +22,13 @@ OS = os.path.join(ROOT, "build", "eps_os_249.bin")
 ROM = os.path.join(ROOT, "build", "bootrom", "eps_boot_200.bin")
 SRC = os.path.join(ROOT, "src", "swing", "sq.s")
 ORG, TAKE, SCRATCH_END = 0x5F0000, 0x600000, 0x67FF00
+
+
+def floor(words):
+    """The time nothing moves before (tools/seqstream.py quantize_take)."""
+    timed, _ = S.decode(words)
+    first = next((i for i, (t, ev) in enumerate(timed) if S.is_note(ev)), len(timed))
+    return timed[first - 1][0] if first else 0
 
 
 def ref(words, grid, pct):
@@ -46,6 +54,20 @@ class SqTest(unittest.TestCase):
         new_end = r["a1"] & 0xFFFFFF
         out = e.read(TAKE, new_end - TAKE)
         return [int.from_bytes(out[i:i + 2], "big") for i in range(0, len(out), 2)]
+
+    def run_sqf(self, words, grid, pct, flags=0):
+        """The fast path (sqf): (words after it, done). Not done: the take
+        may be partly done, and sq finishes it."""
+        e = self.eps
+        data = b"".join(w.to_bytes(2, "big") for w in words)
+        e.write(TAKE, data)
+        end = TAKE + len(data)
+        r = e.call(self.syms["sqf"], max_insns=20_000_000, a0=TAKE, a1=end,
+                   d0=flags, d1=grid, d2=swing.offset("mpc", pct, grid))
+        self.assertEqual((r["a0"] & 0xFFFFFF, r["a1"] & 0xFFFFFF), (TAKE, end))
+        done = not e.uc.reg_read(UC_M68K_REG_SR) & 1
+        out = e.read(TAKE, len(data))
+        return [int.from_bytes(out[i:i + 2], "big") for i in range(0, len(out), 2)], done
 
     def check(self, words, grid, pct):
         got = self.run_sq(words, grid, pct)
@@ -136,6 +158,132 @@ class SqTest(unittest.TestCase):
         w = realistic_pass(rnd, 16, 2)
         self.assertEqual(self.run_sq(w, 12, 58, scratch_end=TAKE + 2 * len(w) + 4), w)
 
+
+    # ---------------------------------------------------------- the fast path
+    def new_pass(self, rnd, grid, pct, length, new, near_end=False):
+        """A take as a wrap sees it: an earlier take quantized (untagged),
+        plus `new` notes played in the pass just finished (tagged, bit 3),
+        some of them chords, a few near the loop end if near_end."""
+        base = ref(random_take(rnd, length), grid, pct)
+        timed, _ = S.decode(base)
+        end = next(t for t, ev in timed if S.code(ev[0]) == S.END)
+        timed = [(t, ev, 0) for t, ev in timed if S.code(ev[0]) != S.END]
+        for _ in range(new):
+            t = rnd.randrange(2, end)
+            if near_end and rnd.random() < 0.2:
+                t = end - rnd.randrange(1, 6)
+            for _ in range(rnd.choice([1, 1, 1, 2, 3])):     # chords
+                ev = [0x8000 | rnd.randrange(15, 40) << 4 | rnd.randrange(3), rnd.randrange(1, 300) << 3,
+                      rnd.randrange(1, 128) << 4 | 8]
+                timed.append((t, ev, 1))
+        timed.sort(key=lambda x: (x[0], x[2]))                # new after old at one time
+        words = S.encode([(t, ev) for t, ev, _ in timed] + [(end, [0x8BC0])])
+        if floor(words) != floor(base):
+            return None     # a new note before the first old one moved the floor (an old note
+        return words        # at it now moves too: sq's job; rare, a controller before the first note)
+
+    def check_fast(self, words, grid, pct):
+        """sqf alone or sqf then sq: the same take as the reference (time
+        events may differ where sqf left them; the events and times not)."""
+        exp = ref(words, grid, pct)
+        got, done = self.run_sqf(words, grid, pct)
+        if not done:
+            got = self.run_sq(got, grid, pct)
+        self.assertEqual(S.decode(got), S.decode(exp))
+        return done
+
+    def test_fast_path(self):
+        rnd = random.Random(21)
+        fast = total = 0
+        for n in range(400):
+            grid = rnd.choice([24, 12, 12, 8, 6])
+            pct = rnd.randrange(50, 76) if grid in (12, 24) else 50
+            w = self.new_pass(rnd, grid, pct, rnd.choice([192, 384, 768]), rnd.choice([1, 2, 4, 8]),
+                              near_end=rnd.random() < 0.3)
+            if w is None:
+                continue
+            total += 1
+            with self.subTest(n=n, grid=grid, pct=pct):
+                fast += self.check_fast(w, grid, pct)
+        self.assertGreater(fast, total * 3 // 4)  # it's the usual case
+
+    def test_fast_path_realistic(self):
+        """Busy one- and two-bar takes, new notes a few ticks off the grid:
+        the fast path does them alone."""
+        rnd = random.Random(22)
+        fast = 0
+        for n in range(150):
+            evs = S.split(realistic_pass(rnd, rnd.choice([8, 16]), rnd.choice([1, 2])))
+            words = [w for ev in evs for w in ev]
+            on_grid = {t for t, ev in S.decode(ref(words, 12, 58))[0] if S.is_note(ev)}
+            t = 0
+            for ev in evs:                      # the new ones: off the grid
+                if S.is_note(ev) and t not in on_grid:
+                    ev[2] |= 8
+                t += S.gap_of(ev)
+            words = [w for ev in evs for w in ev]
+            with self.subTest(n=n):
+                fast += self.check_fast(words, 12, 58)
+        self.assertGreater(fast, 100)
+
+    def test_fast_path_nothing_new(self):
+        """No tagged notes: nothing changes."""
+        rnd = random.Random(23)
+        for _ in range(20):
+            w = self.run_sq(random_take(rnd, 384), 12, 58)
+            got, done = self.run_sqf(w, 12, 58)
+            self.assertTrue(done)
+            self.assertEqual(got, w)
+
+    def test_fast_path_wrap(self):
+        """A note played just before the loop end wraps to the start, as sq
+        does it; not while keys are held (nothing may move then)."""
+        timed = [(0, [0x8BB0]), (1, [0x8B10, 0x07F0]), (1, [0x8160, 0x0040, 0x0600]),
+                 (96, [0x8170, 0x0040, 0x0600]), (190, [0x8160, 0x0040, 0x0608]), (192, [0x8BC0])]
+        w = S.encode(timed)
+        got, done = self.run_sqf(w, 12, 50)
+        self.assertTrue(done)
+        self.assertEqual(S.decode(got), S.decode(ref(w, 12, 50)))
+        self.assertEqual([t for t, *_ in S.notes(got)], [1, 1, 96])
+        got, done = self.run_sqf(w, 12, 50, flags=2)
+        self.assertFalse(done)
+
+    def test_fast_path_every_note(self):
+        """Flag bit 0 (the first wrap, QUANTIZE changed): every note, not
+        just the tagged ones."""
+        rnd = random.Random(24)
+        fast = 0
+        for n in range(300):
+            grid = rnd.choice([24, 12, 8])
+            pct = rnd.randrange(50, 76) if grid in (12, 24) else 50
+            w = random_take(rnd, rnd.choice([192, 384, 768]))
+            with self.subTest(n=n, grid=grid, pct=pct):
+                exp = ref(w, grid, pct)
+                got, done = self.run_sqf(w, grid, pct, flags=1)
+                if not done:
+                    got = self.run_sq(got, grid, pct)
+                fast += done
+                self.assertEqual(S.decode(got), S.decode(exp))
+        self.assertGreater(fast, 30)
+
+    def test_fast_path_held(self):
+        """Keys held (bit 1): in place only, never a move; sq finishes."""
+        rnd = random.Random(25)
+        for n in range(200):
+            grid = rnd.choice([24, 12, 8])
+            pct = 58 if grid == 12 else 50
+            w = self.new_pass(rnd, grid, pct, 192, rnd.choice([2, 4, 8]), near_end=True)
+            if w is None:
+                continue
+            got, done = self.run_sqf(w, grid, pct, flags=2)
+            with self.subTest(n=n):
+                self.assertEqual(len(got), len(w))
+                old = [ev for ev in S.split(w)]
+                self.assertEqual([ev[0] & 0x8FFF for ev in S.split(got) if S.is_note(ev)],
+                                 [ev[0] & 0x8FFF for ev in old if S.is_note(ev)])  # nothing moved
+                if not done:
+                    got = self.run_sq(got, grid, pct)
+                self.assertEqual(S.decode(got), S.decode(ref(w, grid, pct)))
 
 if __name__ == "__main__":
     unittest.main()
