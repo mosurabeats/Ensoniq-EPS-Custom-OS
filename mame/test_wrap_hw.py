@@ -11,7 +11,9 @@ every wrap). The fast path (sq.s, sqf) moves only the new notes, in place.
 * busy: the same with a closed hat on every 16th of every pass, each held
   50 ms (some are held over the wrap).
 Each wrap is timed in CPU cycles (MAME runs the EPS's 68000 at 10 MHz),
-then the take kept with NEW must have every note on the 1/16 grid.
+then the take kept with NEW must have every note played, on the 1/16 grid
+(a hit right at the loop start, recorded before the opening events, once
+went to tick 0, where the OS drops it: found on the hardware, 2026-10-06).
 Needs what mame/test_mutegroups.py needs.
 """
 import os
@@ -50,13 +52,18 @@ end)
 """
 
 
+LOOP_NOTES = 5                              # loop_record.txt's notes after RECORD + PLAY
+
+
 def run(disk, name, busy):
     lines = H.shifted(os.path.join(T.ROOT, "mame", "keys", "loop_record.txt"), 6, upto=51.5)
+    played = LOOP_NOTES
     if busy:
         t = 43.6
         while t < 50.7:
             lines += [f"{t:.3f} 86 50\n", f"{t + 0.05:.3f} 06 40\n"]
             t += 0.125
+            played += 1
         lines.sort(key=lambda l: float(l.split()[0]))
     lines += ["52.0 a3 00\n", "52.15 23 00\n"]             # KEEP = NEW
     keys = os.path.join(T.OUT, name + ".txt")
@@ -69,7 +76,7 @@ def run(disk, name, busy):
     ev = [l.split() for l in out.splitlines() if l.split()[:1] in (["IN"], ["OUT"])]
     wraps = [int(b[1]) - int(a[1]) for a, b in zip(ev, ev[1:]) if a[0] == "IN" and b[0] == "OUT"]
     kept = next((S.parse(l[5:]) for l in out.splitlines() if l.startswith("KEPT ")), [])
-    return out, wraps, kept
+    return out, wraps, kept, played
 
 
 def main():
@@ -86,7 +93,7 @@ def main():
         print(f"{'PASS' if cond else 'FAIL'}  {what}")
 
     for name, f, limit in (("light", fl, LIGHT_MAX), ("busy", fb, BUSY_MAX)):
-        out, wraps, kept = f.result()
+        out, wraps, kept, played = f.result()
         notes = S.notes(kept) if kept else []
         print(f"   {name}: wraps {wraps} cycles ({', '.join(f'{c / 1e4:.1f}' for c in wraps)} ms), "
               f"{len(notes)} notes kept")
@@ -95,6 +102,7 @@ def main():
               len(wraps) == 3 and max(wraps) < limit)
         check(f"{name}: the kept take's notes on the 1/16 grid",
               notes and all(t % 12 == 0 or t == 1 for t, *_ in notes))
+        check(f"{name}: every note played kept ({played})", len(notes) == played)
     sys.exit(0 if all(ok) else 1)
 
 

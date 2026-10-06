@@ -915,6 +915,18 @@ Now the wrap usually runs **sqf** (`src/swing/sq.s`), the fast path:
 * Every note, not just the tagged ones, at the first wrap of a recording
   (the track's earlier notes), when QUANTIZE or SWING% changed, and after
   a wrap that left notes (U_FULL); sq after an undo.
+* **The floor** (nothing moves before it; notes there stay): the time of
+  the opening events (START at 0, controller states at tick 1) before the
+  first note, **and those at the first note's time after it**. Found on the
+  hardware (2026-10-06): a hit right at the loop start is recorded at tick
+  1 *before* that pass's opening events, also at tick 1, so the floor was
+  START's tick 0 and the hit was quantized to tick 0, where the OS drops it
+  when it plays the take next pass. sq had the same rule (a MAME take in
+  `tests/test_swing_asm.py` has the case); the quicker wrap made it common
+  (before, a hit in the wrap's 30 ms was recorded after the opening
+  events). `tests/test_sq.py` test_note_before_the_opening_events (that
+  take); `tools/seqstream.py quantize_take(opening=True)`; the emulator
+  build keeps the old rule (`opening=False`).
 Same events at the same times as sq (time events may differ):
 `tests/test_sq.py` (random passes, chords, wraps, every-note mode, keys
 held). MAME: the light take 1.3 ms at each wrap, the busy one 3.7, 4.6 and

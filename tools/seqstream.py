@@ -119,19 +119,25 @@ def clear_tags(words):
     return [w for ev in split(words) for w in (ev[:2] + [ev[2] & 0xFFF0] if is_note(ev) else ev)]
 
 
-def quantize_take(words, settings, kill=0):
+def quantize_take(words, settings, kill=0, opening=True):
     """Quantize the notes of a take. settings: {instrument 0-7: (grid,
     style, amount)} (instruments not listed stay as played). Notes keep
     their order relative to events at the same new time; notes that land
     on or after the end wrap to the start of the take; nothing moves before
     the take's opening events (start marker and controller states, at tick
     1 in recordings), and notes already at that time stay (a downbeat).
-    kill: notes whose tag n has bit n set in it are left out (undo)."""
+    kill: notes whose tag n has bit n set in it are left out (undo).
+    opening: the opening events at the first note's time count for that
+    time even after a note there (src/swing/sq.s); False: the time of the
+    event before the first note (src/swing.s, the emulator build)."""
     timed, _ = decode(words)
     timed = [(t, ev) for t, ev in timed if not kill >> tag(ev) & 1 or not tag(ev)]
     end = next((t for t, ev in timed if code(ev[0]) == END), None)
     first_note = next((i for i, (t, ev) in enumerate(timed) if is_note(ev)), len(timed))
     floor = timed[first_note - 1][0] if first_note else 0
+    if opening and first_note < len(timed):  # opening events at the first note's time count too:
+        ft = timed[first_note][0]   # a note played right at the loop start can come
+        floor = max([floor] + [t for t, ev in timed if not is_note(ev) and t <= ft])  # before them
     moved = []
     for i, (t, ev) in enumerate(timed):
         inst = ev[0] & 0xF
@@ -187,7 +193,7 @@ def swing_take(words, settings):
         _fast(evs, settings)
         return [w for ev in evs for w in ev]
     except _Fallback:
-        return quantize_take([w for ev in evs for w in ev], settings)
+        return quantize_take([w for ev in evs for w in ev], settings, opening=False)
 
 
 def quantize_take_fast(words, settings):
@@ -310,7 +316,7 @@ def swing_logged(words, settings, log):
         _logged(evs, settings, log)
         return [w for ev in evs for w in ev]
     except _Fallback:
-        return quantize_take([w for ev in evs for w in ev], settings)
+        return quantize_take([w for ev in evs for w in ev], settings, opening=False)
 
 
 def _logged(evs, settings, log):

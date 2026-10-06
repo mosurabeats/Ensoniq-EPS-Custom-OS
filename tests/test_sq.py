@@ -28,7 +28,10 @@ def floor(words):
     """The time nothing moves before (tools/seqstream.py quantize_take)."""
     timed, _ = S.decode(words)
     first = next((i for i, (t, ev) in enumerate(timed) if S.is_note(ev)), len(timed))
-    return timed[first - 1][0] if first else 0
+    floor = timed[first - 1][0] if first else 0
+    if first < len(timed):
+        floor = max([floor] + [t for t, ev in timed if not S.is_note(ev) and t <= timed[first][0]])
+    return floor
 
 
 def ref(words, grid, pct):
@@ -234,6 +237,27 @@ class SqTest(unittest.TestCase):
             got, done = self.run_sqf(w, 12, 58)
             self.assertTrue(done)
             self.assertEqual(got, w)
+
+    def test_note_before_the_opening_events(self):
+        """Found on the hardware (2026-10-06): a hit right at the loop start
+        is recorded at tick 1 before the opening events (also at tick 1). It
+        stays at tick 1: the floor counts them (it went to tick 0, where the
+        OS drops it on the next pass). The take as MAME recorded it."""
+        w = S.parse("8bb0 8b90 0010 8160 0040 0608 8b10 07f0 8b80 0000 8bd0 07f0 8b10 07f0 8b80 0000 "
+                    "bbd0 5ff0 9110 0040 4600 d110 0040 2600 9160 0040 4600 8bc0")
+        for grid, pct in ((12, 50), (12, 58), (24, 50)):
+            with self.subTest(grid=grid, pct=pct):
+                exp = ref(w, grid, pct)
+                self.assertEqual(S.notes(exp)[0][:2], (1, 43))
+                got = self.run_sq(w, grid, pct)
+                self.assertEqual(S.decode(got), S.decode(exp))
+                for flags in ((0, 1, 2) if (grid, pct) == (12, 50) else (1,)):  # (0, 2: the
+                                                    # old notes on the grid: the straight 1/16)
+                    got, done = self.run_sqf(w, grid, pct, flags)
+                    if not done:
+                        got = self.run_sq(got, grid, pct)
+                    self.assertEqual(S.decode(got), S.decode(exp))
+                    self.assertTrue(all(t >= 1 for t, *_ in S.notes(got)))
 
     def test_fast_path_wrap(self):
         """A note played just before the loop end wraps to the start, as sq

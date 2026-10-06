@@ -191,8 +191,8 @@ class UndoTest(unittest.TestCase):
             end = base + e.rl(WRITE_PTR)
             got = [e.rw(a) for a in range(take, end, 2)]
             with self.subTest(n=n):
-                exp = S.quantize_take(words, {}, kill | killp)
-                if exp != S.quantize_take(words, {}):          # something killed
+                exp = S.quantize_take(words, {}, kill | killp, opening=False)
+                if exp != S.quantize_take(words, {}, opening=False):          # something killed
                     killed += 1
                     self.assertEqual(got, S.clear_tags(exp))
                     self.assertLess(len(S.notes(got)), len(S.notes(words)))

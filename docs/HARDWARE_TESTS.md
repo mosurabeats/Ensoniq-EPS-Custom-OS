@@ -244,6 +244,19 @@ move, in place (`mame/test_wrap_hw.py`: 1.3 ms a wrap for a light take,
 under 7 ms for 16th hats over three passes, the kept take on the grid).
 Please loop record a busy beat again and listen to the downbeat.
 
+**Loop recording lost hits (2026-10-06, video, the disk with the quick
+wraps):** hits played in the first pass were gone from the second. A hit
+right at the loop start is recorded at tick 1 before that pass's opening
+events (also tick 1); the quantizer took the floor (where nothing moves
+before) from the events before the first note, START at tick 0, and moved
+the hit to tick 0, where the OS drops it on the next pass. The old,
+slow wrap made this rare (a hit during its 30 ms came after the opening
+events); the quick one made it common. Fixed: the opening events at the
+first note's time count for the floor (`tests/test_sq.py`, the take as
+MAME recorded it). MAME now also checks that every note played is kept
+(`mame/test_swing_hw.py`, `mame/test_wrap_hw.py`: the busy take had lost
+2 of 62).
+
 **HIT, first hardware test:** no setting changed the fresh sample, and it
 needed the key held. A new wavesample on the EPS is MODE = LOOP FORWARD
 (checked in MAME: CREATE NEW WAVESAMPLE gives mode 2, soft velocity

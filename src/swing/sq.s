@@ -61,11 +61,16 @@ sq:     lea     sqv(pc),a5
         bcc.s   12f
         bsr     killed                  | (an undone note isn't there)
         bne.s   14f
+        tst.b   V_SEEN(a5)
+        bne.s   14f
         st      V_SEEN(a5)
+        move.l  d7,V_FT(a5)             | the first note's time
         bra.s   14f
-12:     tst.b   V_SEEN(a5)
-        bne.s   13f
-        move.l  d7,V_FLOOR(a5)
+12:     tst.b   V_SEEN(a5)              | the floor: opening events before
+        beq.s   11f                     | the first note, or at its time
+        cmp.l   V_FT(a5),d7             | after it (a note played right at
+        bne.s   13f                     | the loop start can come before
+11:     move.l  d7,V_FLOOR(a5)          | them: it mustn't go to tick 0)
 13:     cmpi.w  #C_END,d4
         bne.s   14f
         tst.l   V_END(a5)
@@ -293,7 +298,29 @@ sqf:    lea     sqv(pc),a5
         sf      F_SKIP(a5)
         clr.l   F_LINE(a5)
         sf      F_PAR(a5)
-        moveq   #0,d7                   | the time of the event at a6
+        moveq   #-1,d0                  | the floor, as sq: opening events
+        move.l  d0,V_FT(a5)             | before the first note or at its
+        moveq   #0,d7                   | time
+        movea.l a0,a6
+50:     cmpa.l  a1,a6
+        bhs.s   54f
+        move.l  V_FT(a5),d0
+        bmi.s   51f
+        cmp.l   d0,d7
+        bgt.s   54f                     | past the first note's time
+51:     bsr     evnext
+        cmpi.w  #C_TIME,d4
+        beq.s   53f
+        cmpi.w  #0xB0,d4
+        bcc.s   52f
+        tst.l   V_FT(a5)
+        bpl.s   53f
+        move.l  d7,V_FT(a5)
+        bra.s   53f
+52:     move.l  d7,V_FLOOR(a5)
+53:     add.l   d5,d7
+        bra.s   50b
+54:     moveq   #0,d7                   | the time of the event at a6
         movea.l a0,a6
 1:      cmpa.l  a1,a6
         bhs     90f
@@ -316,11 +343,6 @@ sqf:    lea     sqv(pc),a5
         or.w    d6,d5
         bra.s   10f
 2:      bsr     evnext                  | d3 length, d4 code, d5 gap
-        cmpi.w  #C_TIME,d4
-        beq.s   8f
-        tst.b   V_SEEN(a5)
-        bne.s   8f
-        move.l  d7,V_FLOOR(a5)          | (as sq: the floor)
 8:      move.w  d5,F_PGAP(a5)
         add.l   d5,d7
 9:      move.l  a3,F_PREV(a5)
@@ -757,7 +779,7 @@ qdone:  movem.l (sp)+,d3-d6
 
 | Variables (a5) and buffers.
         .balign 2
-sqv:    .space  50
+sqv:    .space  54
         .equ    V_SP,    0
         .equ    V_OUT0,  4
         .equ    V_LIM,   8
@@ -777,5 +799,6 @@ sqv:    .space  50
         .equ    V_WDONE, 46
         .equ    V_MOVED, 47
         .equ    V_KILL,  48
+        .equ    V_FT,    50             | .l the first note's time
 sqwrap: .space  NWMAX*4
 sqbuf:  .space  NBMAX*8

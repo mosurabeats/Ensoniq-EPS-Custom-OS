@@ -122,7 +122,7 @@ class SwingAsmTest(unittest.TestCase):
     def check(self, words, settings):
         got = self.run_asm(words, settings)
         self.assertEqual(got, S.swing_take(words, settings))           # exact
-        self.assertEqual(sorted(S.notes(got)), sorted(S.notes(S.quantize_take(words, settings))))
+        self.assertEqual(sorted(S.notes(got)), sorted(S.notes(S.quantize_take(words, settings, opening=False))))
 
     def test_mame_takes(self):
         for hexw in MAME_TAKES:
@@ -168,7 +168,7 @@ class SwingAsmTest(unittest.TestCase):
                        a2=end, a3=SCRATCH_END, a4=SETTINGS, d4=kill << 16)
             out = e.read(TAKE, (r["a1"] & 0xFFFFFF) - TAKE)
             got = [int.from_bytes(out[i:i + 2], "big") for i in range(0, len(out), 2)]
-            exp = S.quantize_take(words, settings, kill)
+            exp = S.quantize_take(words, settings, kill, opening=False)
             with self.subTest(n=n):
                 if got != words:                    # re-encoded
                     self.assertEqual(got, exp)
@@ -237,7 +237,7 @@ class SwingAsmTest(unittest.TestCase):
                 stopped += status
                 if status == 0:
                     self.assertEqual(got, exp)
-                    self.assertEqual(sorted(S.notes(got)), sorted(S.notes(S.quantize_take(words, st))))
+                    self.assertEqual(sorted(S.notes(got)), sorted(S.notes(S.quantize_take(words, st, opening=False))))
         self.assertLess(stopped, 30)
 
     def test_held_notes_follow_their_notes(self):

@@ -244,6 +244,8 @@ def main():
           takes.get("TAKE") and takes["TAKE"][-1] and on_grid(takes["TAKE"][-1]))
     check("kept with NEW: the final take on the 1/16 grid (its last pass too)",
           takes.get("KEPT") and on_grid(takes["KEPT"][0]) and not on_grid(takes["FINAL"][0]))
+    check("kept with NEW: every note played (3 D2, 2 G2), the G2 played at the loop start on tick 1",
+          [(t, k) for t, k, *_ in takes.get("KEPT", [[]])[0]] == [(1, 43), (36, 38), (60, 38), (84, 38), (168, 43)])
     print("   final before KEEP:", [(t, k) for t, k, *_ in takes.get("FINAL", [[]])[0]])
     print("   kept:             ", [(t, k) for t, k, *_ in takes.get("KEPT", [[]])[0]])
     check("SWING% 58 set on the Seq·Song page", "SWING%=" in s_out)

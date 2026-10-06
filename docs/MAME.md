@@ -169,7 +169,7 @@ kept with KEEP = NEW (ENTER at the prompt) are on the grid; again with
 SWING% 58 set on the Seq·Song page: odd 16ths 2 ticks late; mute groups from
 the 6 Amp page; Command, CREATE NEW SEQUENCE (overlay 0 back from the
 store, no disk read), then QUANTIZE on the page again; HIT on the Layer
-page (`mame/keys/panel_inst.txt`). 16 checks.
+page (`mame/keys/panel_inst.txt`). 17 checks.
 
 ```sh
 python3 mame/test_undo_hw.py     # loop undo on the hardware build
@@ -179,7 +179,7 @@ python3 mame/test_wrap_hw.py     # how long each loop wrap holds up the sequence
 `mame/test_wrap_hw.py` loop records a light take and a busy one (16th hats
 over every pass, some held over the loop point), times the wrap hook in
 CPU cycles at each wrap (under 2.5 and 10 ms) and checks the take kept
-with NEW is on the 1/16 grid. 6 checks.
+with NEW has every note played, on the 1/16 grid. 8 checks.
 
 Two runs in parallel: `mame/keys/loop_undo.txt` (G2 played in pass 2,
 then RECORD: gone from pass 3 on; a second RECORD in pass 3 does nothing)
