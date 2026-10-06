@@ -232,6 +232,10 @@ prompt used for its variables (the count was written through it; MAME
 crashed with ERROR 129), and counts under 10 printed their ones as 0.
 Both fixed; MAME now goes ▼ ▼ to 8.
 
+**Hardware results, 2026-10-06 (the disk with the loop-point fixes):**
+mute groups work; the sampling rates and filter work (SP mode); CRUSH
+works. Not yet tried: TUNE per wavesample. Loop recording: being tested.
+
 **CHOP, second hardware test (2026-10-05, the disk with both fixes):
 works**: the loop chops into slices that play in order.
 
