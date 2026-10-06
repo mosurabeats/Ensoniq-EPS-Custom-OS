@@ -174,7 +174,7 @@ class SqTest(unittest.TestCase):
         for _ in range(new):
             t = rnd.randrange(2, end)
             if near_end and rnd.random() < 0.2:
-                t = end - rnd.randrange(1, 6)
+                t = end - rnd.randrange(0, 6)               # (0: on the loop point, at END)
             for _ in range(rnd.choice([1, 1, 1, 2, 3])):     # chords
                 ev = [0x8000 | rnd.randrange(15, 40) << 4 | rnd.randrange(3), rnd.randrange(1, 300) << 3,
                       rnd.randrange(1, 128) << 4 | 8]
@@ -258,6 +258,30 @@ class SqTest(unittest.TestCase):
                         got = self.run_sq(got, grid, pct)
                     self.assertEqual(S.decode(got), S.decode(exp))
                     self.assertTrue(all(t >= 1 for t, *_ in S.notes(got)))
+
+    def test_note_at_the_end(self):
+        """Found in MAME (2026-10-06): a hit played on the loop point is
+        recorded at END's time. It's on the grid but it must wrap to the
+        start (at END it never plays); sqf left it there."""
+        timed = [(0, [0x8BB0]), (1, [0x8B10, 0x07F0]), (1, [0x8160, 0x0040, 0x0600]),
+                 (96, [0x8170, 0x0040, 0x0600]), (192, [0x8160, 0x0040, 0x0608]),
+                 (192, [0x8170, 0x0040, 0x0608]), (192, [0x8BC0])]
+        w = S.encode(timed)
+        exp = ref(w, 12, 50)
+        self.assertEqual([t for t, *_ in S.notes(exp)], [1, 1, 1, 96])
+        for flags in (0, 1):
+            got, done = self.run_sqf(w, 12, 50, flags)
+            self.assertTrue(done)
+            self.assertEqual(S.decode(got), S.decode(exp))
+        got, done = self.run_sqf(w, 12, 50, flags=2)      # keys held: next time
+        self.assertFalse(done)
+        self.assertEqual(got, w)
+        # an earlier pass's (untagged) note there too: the take before a
+        # punch-in ends a tick late (MAME), so its last hit is at END now
+        w2 = S.encode([(t, ev[:2] + [ev[2] & ~8] if len(ev) == 3 else ev) for t, ev in timed])
+        got, done = self.run_sqf(w2, 12, 50)
+        self.assertTrue(done)
+        self.assertEqual(S.decode(got), S.decode(ref(w2, 12, 50)))
 
     def test_fast_path_wrap(self):
         """A note played just before the loop end wraps to the start, as sq

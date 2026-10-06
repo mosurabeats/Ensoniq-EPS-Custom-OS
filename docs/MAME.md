@@ -179,7 +179,9 @@ python3 mame/test_wrap_hw.py     # how long each loop wrap holds up the sequence
 `mame/test_wrap_hw.py` loop records a light take and a busy one (16th hats
 over every pass, some held over the loop point), times the wrap hook in
 CPU cycles at each wrap (under 2.5 and 10 ms) and checks the take kept
-with NEW has every note played, on the 1/16 grid. 8 checks.
+with NEW has every note played, on the 1/16 grid. A third run punches in
+(PLAY, then RECORD + PLAY in bar 2 of a 2-bar sequence) with a hit on the
+loop point: from the second wrap on it must be at the start. 11 checks.
 
 Two runs in parallel: `mame/keys/loop_undo.txt` (G2 played in pass 2,
 then RECORD: gone from pass 3 on; a second RECORD in pass 3 does nothing)

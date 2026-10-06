@@ -255,7 +255,12 @@ events); the quick one made it common. Fixed: the opening events at the
 first note's time count for the floor (`tests/test_sq.py`, the take as
 MAME recorded it). MAME now also checks that every note played is kept
 (`mame/test_swing_hw.py`, `mame/test_wrap_hw.py`: the busy take had lost
-2 of 62).
+2 of 62). Also found while reproducing it (recording started in bar 2
+with RECORD + PLAY while playing): a hit right on the loop point stayed at
+the very end of the take, where it never plays, until STOP. Fixed (it goes
+to the start at the next wrap). Not reproduced: a whole group of first-pass
+hits gone, as in the video; MAME keeps them whether recording starts at
+bar 1 or bar 2. Notes played before recording starts aren't recorded.
 
 **HIT, first hardware test:** no setting changed the fresh sample, and it
 needed the key held. A new wavesample on the EPS is MODE = LOOP FORWARD

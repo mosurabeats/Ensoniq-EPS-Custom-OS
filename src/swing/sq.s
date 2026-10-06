@@ -353,7 +353,12 @@ sqf:    lea     sqv(pc),a5
         btst    #0,F_ALL(a5)
         bne.s   16f
         btst    #3,5(a3)
-        beq.s   8b                      | an earlier pass's: on the grid
+        bne.s   16f
+        tst.l   d5                      | an earlier pass's: on the grid,
+        bne     8b                      | unless on the loop point (the take
+        movea.l a6,a2                   | before a punch-in can end a tick
+        bsr     atend                   | late: its last hit is at END now)
+        bcc     8b
 16:     cmp.l   V_FLOOR(a5),d7
         beq.s   8b                      | at the floor: stays
         move.l  d7,d0
@@ -362,8 +367,14 @@ sqf:    lea     sqv(pc),a5
         bge.s   11f
         move.l  V_FLOOR(a5),d0
 11:     sub.l   d7,d0
-        beq.s   8b
-        move.l  d0,F_DELTA(a5)
+        bne.s   60f
+        tst.l   d5                      | on the grid: it stays, unless it's
+        bne     8b                      | at END (played on the loop point:
+        movea.l a6,a2                   | it wraps to the start, as in sq)
+        bsr     atend
+        bcc     8b
+62:     moveq   #0,d0
+60:     move.l  d0,F_DELTA(a5)
         move.l  a3,F_FIRST(a5)
 12:     tst.l   d5                      | the chord: tagged notes at this time
         bne.s   13f
@@ -394,6 +405,9 @@ sqf:    lea     sqv(pc),a5
         andi.w  #0xFF,d6
         cmpi.w  #0xB0,d6
         bcc     20f                     | onto a non-note: END?
+        movea.l a6,a2                   | onto notes: on the loop point?
+        bsr     atend
+        bcs     20f
 14:     cmpi.l  #127,d4
         bhi     18f
         moveq   #0,d6
@@ -561,6 +575,30 @@ qtrack: movem.l d3-d6,-(sp)
         and.b   d3,d5
         move.b  d5,F_PAR(a5)
         bra     qback
+
+| Carry set if the events from a2 at their time (notes with gap 0, then
+| one more event) end at END: a note there is on the loop point. Uses d6.
+atend:  cmpa.l  a1,a2
+        bhs.s   8f
+        move.w  (a2),d6
+        lsr.w   #4,d6
+        andi.w  #0xFF,d6
+        cmpi.w  #C_END,d6
+        beq.s   9f
+        cmpi.w  #0xB0,d6
+        bcc.s   8f
+        move.w  (a2),d6
+        andi.w  #0x7000,d6
+        bne.s   8f
+        move.w  4(a2),d6
+        andi.w  #0x7800,d6
+        bne.s   8f
+        addq.l  #6,a2
+        bra.s   atend
+8:      andi.b  #0xFE,ccr
+        rts
+9:      ori.b   #1,ccr
+        rts
 
 | The event before (F_PREV): a2, d3 = its length. Carry set if gap d6
 | (>= 0) doesn't fit in it (or there's none, or it's 1-word).

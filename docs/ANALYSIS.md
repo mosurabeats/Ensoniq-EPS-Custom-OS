@@ -927,6 +927,15 @@ Now the wrap usually runs **sqf** (`src/swing/sq.s`), the fast path:
   events). `tests/test_sq.py` test_note_before_the_opening_events (that
   take); `tools/seqstream.py quantize_take(opening=True)`; the emulator
   build keeps the old rule (`opening=False`).
+* **A note on the loop point** (at END's time, played right on it) is on
+  the grid but must wrap to the start like one landing there (at END it
+  never plays); likewise one moving onto notes that sit at END. sqf
+  checks that for earlier passes' notes too (cheap: only notes with a
+  zero gap): the take of a punch-in's first pass (RECORD + PLAY while
+  playing, opening events at the punch-in bar) ends a tick late (385 of a
+  2-bar 384, MAME), so its loop-point hit is at END in the next take,
+  untagged. Found in MAME (2026-10-06) looking for the hardware report's
+  lost hits; `mame/test_wrap_hw.py` punch.
 Same events at the same times as sq (time events may differ):
 `tests/test_sq.py` (random passes, chords, wraps, every-note mode, keys
 held). MAME: the light take 1.3 ms at each wrap, the busy one 3.7, 4.6 and
