@@ -9,112 +9,312 @@ is just "write a floppy or Gotek image and power on".
 
 ## Chosen features
 
-### 1. Mute groups (one group per instrument)
+### 1. Mute groups (per key)
 
-**Behaviour:** each of the 8 instruments gets a mute group: OFF or 1–8.
-When an instrument in group G plays a note, every sounding voice of any
-instrument in group G is cut, including the instrument's own other keys.
-That gives MPC-style mute groups between instruments (open and closed hats on
-two instruments), and a chopped break on one instrument becomes mono, with each
-slice cutting the last. Voices still in their release tail are cut too.
+**Behaviour:** every key of every instrument has a mute group: none or
+1–15. When a note starts on a key in group G, every sounding voice whose own
+(instrument, key) is in group G is cut, including voices in their release
+tail. So kick and snare on two keys of one kit instrument can cut each
+other while the hats use another group; groups also work across
+instruments; and a key in a group cuts itself when retriggered (MPC
+style). A chopped break with all its keys in one group plays mono.
 
-**Implementation:** written, but not yet tested or placed in memory
-(`src/mutegroup.s`, 108 bytes):
+**Implementation:** `src/mutegroup.s`, 182 bytes of code + a 352-byte table
+(4 bits per instrument × key), in the code area. **Passing in the emulator**
+(`tests/test_mutegroup.py`, real OS voice kill), not yet on hardware:
 * Hook: per-instrument note-on at `0xFFACA4` (D5 = instrument). The first
   8 bytes become `jsr mute_hook` + `nop`, and the hook runs the displaced
-  instructions itself.
-* Walks the OS voice lists (active `0xFF16E4`, releasing `0xFF16DC`) and
-  calls the OS's own voice-steal kill (`0xFFB7C2`, rate 10) on matching voices.
-* The group table is 8 bytes.
+  instructions itself; every register leaves the patched entry as it leaves
+  the stock one (tested).
+* Key = incoming key (`0xFF16BB`) + the instrument's transpose, clamped to
+  21–108, exactly as the OS computes the voice's key (`+4`). MIDI note
+  numbers: 21 = A0, 60 = C4 (middle C), 108 = C8.
+* Walks the active (`0xFF16E4`) and releasing (`0xFF16DC`) voice lists and
+  calls the OS's voice-steal kill (`0xFFB7C2`, rate 10) on matching voices.
+  Constant-time group lookup, so no extra latency with many voices.
+* Two instruments in the same group struck by the same key: only the later
+  one sounds, as on an MPC.
 
 | Step | What | Status |
 |---|---|---|
-| v1 | Groups set at build time: `mkhook.py --set mute_table=0101…` | needs a code location |
-| v2 | Edit the group on the instrument page from the front panel | needs the display/parameter system decoded |
-| v3 | Save the group with the instrument file (spare header byte) | needs the instrument format mapped |
+| v1 | Groups set at build time: `mkcodearea.py --groups "1:C2=1,1:D2=1,1:F#2-A#2=2"` (instrument:keys=group; `I=G` for a whole instrument) | emulator-tested; **hardware test 1** |
+| v2 | Edit the group per wavesample/key from the front panel | needs the parameter system decoded |
+| v3 | Save it with the instrument (spare wavesample byte); CHOP sets it for all slices | needs the wavesample format (same work as CHOP) |
+| v4 | Per wavesample (byte `0x11E`), MUTE GROUP on the 6 Amp page, everything in OS RAM (`tools/mkresident.py`, `EPS249_MUTE`): the hardware build | **works on hardware** (all six steps of docs/HARDWARE_TESTS.md, saving included); emulator: `mame/test_resident.py` |
 
 ### 2. Anti-aliasing filter OUT when sampling
 
 **Behaviour:** like the EPS-16+, the sampling FILTER CUTOFF gets an **OUT**
-setting that takes the input filter out of the path, so low sample rates
-alias (SP-1200 style crunch). If the hardware can't truly bypass the
-filter, OUT selects the widest setting regardless of sample rate.
+setting, so low sample rates alias (SP-1200 style crunch). The EPS hardware
+can't bypass the filter (see below), so OUT selects the widest cutoff
+whatever the sample rate.
+
+**Hardware** (schematics + boot ROM, see ANALYSIS.md → Sampling filter
+hardware): the filter is an XR-1008 switched-capacitor low-pass, always in
+the path. Its clock comes from a 10 MHz counter preset by a 4-bit code
+N = {OP4, CA2, CA1, CA0}: FCLK = 10 MHz / (2·(17 − N)), cutoff = FCLK / 50.
 
 **How the stock OS handles it** (overlay 2, see ANALYSIS.md → Sampling):
-* Sample rate index `0xFF020F` (40 rates) → boot-ROM divisor table `0xC07026`
-  → DUART counter/timer = sample clock.
-* Filter index `0xFF0212` → boot-ROM table `0xC0704E`. The upper bits drive
-  **DUART output bits OP4–OP7** (the analog filter select lines). The low
-  3 bits go to the OTIS chip.
-* Changing the rate resets the filter from a third ROM table (`0xC06FFE`), via
-  `0xFF45A0` → overlay routine `0xFFE20E`.
-* The allowed cutoff range comes from parameter descriptors that aren't in
-  the OS (presumably in the boot ROM).
+* FILTER CUTOFF (`0xFF0212`) has 12 settings, labelled 6.25 … 20.0 KHZ.
+  Setting k → boot-ROM table `0xC0704E` → byte E → N = k + 1. E bits 0–2 go
+  to the sound chip (→ CA0–CA2), bits 4–6 to OP4–OP6. OP5/OP6 are the
+  analog-mux select and must stay on the sampling input. OP4 is the counter
+  MSB.
+* Changing SAMPLE RATE (`0xFF020F`, 625 kHz / divisor, 6.25–52.1 kHz) resets
+  FILTER CUTOFF from ROM table `0xC06FFE` (`0xFF45A0` → `0xFFE20E`).
+* The hardware can go to N = 13, 14, 15 = 25, 33.3, **50 kHz**. The stock OS
+  stops at N = 12 = 20 kHz.
 
-**Step 1: probe (ready to test).** `tools/filterprobe.py` builds 8 OS disks.
-Each forces one OP4–OP6 pattern at `0xFFE2F6` (overlay 2, an 8-byte in-place
-change). Sample white noise or cymbals at a low rate with each disk and
-compare. This shows which pattern is the widest or a true bypass.
+**What this means for OUT.** FILTER CUTOFF looks user-settable up to
+20 kHz at any sample rate (12 labels, one descriptor; the range check isn't
+read yet). At low rates the stock floor (6.25 kHz) is
+already above Nyquist. So the stock EPS can already sample at, say, 10 kHz
+with a 20 kHz cutoff, which aliases almost everything. OUT would add
+20 → 50 kHz, which matters only for sources with content above 20 kHz.
+CD-sourced material has none, so it may sound the same as stock 20.0 KHZ.
 
-**Step 2: OUT.** Map a filter setting to the bypass pattern. Two candidates:
-* the top of the cutoff range means OUT (no UI change needed), or
-* a new OUT value past the top, which needs the range descriptor.
+**Step 0: try the stock EPS (no custom OS).** Set a low SAMPLE RATE, then set
+FILTER CUTOFF to 20.0 KHZ (after the rate, because changing the rate resets
+the filter). If that is crunchy enough, feature 2 shrinks to a convenience:
+keep the cutoff at its maximum when the rate changes.
 
-Either way it's a few bytes in overlay 2 plus a small hook. Because it lives
-in the sampling overlay, it needs no resident space.
+**Step 1: probe (ready to test).** `tools/filterprobe.py` builds 16 OS
+disks, one per N. Each replaces the table read at `0xFFE38E` with
+`moveq #E,d4` (4 bytes, overlay 2), E = `0x28 | (N & 8) << 1 | (N & 7)`.
+N = 1–12 reproduce the stock settings. Compare N = 12 with N = 15 at a low
+rate, with a bright source that has real content above 20 kHz (a synth or
+noise source, not a CD).
 
-### 3. Sequencer: MPC-style swing and quantize
+(The first probe disks forced OP4–OP6 directly. Six of the eight patterns
+switched the A/D to a wheel or slider, so they don't test the filter.)
 
-**Behaviour:**
-* **Quantize** (the EPS "auto-correct") to 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32,
-  with **swing 50–75%** on 1/8 and 1/16. Every second grid step is delayed by
-  `(swing − 50)/50 × grid`, like the MPC.
-* Applied when recording, as the MPC does, plus a **TIMING CORRECT** command
-  that quantizes and swings an already recorded track, with a strength setting
-  (50–100%) so it doesn't sound robotic.
-* Possible later step: non-destructive playback swing per track.
+**Step 2: OUT.** Options, cheapest first:
+* **Lock:** skip the rate → filter reset (`0xFFE20E`) when a flag is set,
+  so 20.0 KHZ stays put.
+* **Top = OUT:** setting 11 uses N = 15 (`moveq #$3F,d4` when the index is
+  11). The display still says 20.0 KHZ unless we patch its label.
+* **New 13th value "OUT":** needs the descriptor's range and a label.
 
-**What we know:** the sequencer runs at 96 ticks per quarter note. Bar length
-is in `0xFF1602` (384 for 4/4). The time-signature and bar/beat math is at
-`0xFF5A18–0xFF5AE0` (variables around `0xFF803C–0xFF8046`).
+All of these are a few bytes in overlay 2 at `0xFFE20E`/`0xFFE38E`. Because
+they live in the sampling overlay, they need no resident space.
 
-**Still to find:** the record-time quantize routine and the track event
-format.
+**True bypass (optional hardware mod):** a switch that routes the signal
+around the XR-1008.
 
-## Shared blocker: space for new code
+### 3. Sequencer: MPC60 / MPC3000 / SP-1200 swing
 
-Resident RAM (`0xFF2000–0xFFDFFF`) is packed. What we measured:
+**Behaviour:** QUANTIZE TRACK gets a swing setting for 1/8 and 1/16, plus a
+strength (50–100%, MPC timing-correct style). Every second grid step (the
+even 8ths/16ths) moves later. The EPS runs at 96 PPQN, like the MPC60 and
+MPC3000, so their swing is reproduced tick for tick:
 
-| Approach | Yield | Cost / risk | Status |
+| Style | Settings | 1/16 offset (ticks) | Source of the numbers |
 |---|---|---|---|
-| **Dead code** (nothing calls it) | ~150 bytes in 7 pieces of 16–30 bytes. Not usable | none | measured; ruled out |
-| **Move boot-only code into the boot overlay.** File chunk 0x14000 is the init code; it runs once from the overlay window and has ~4.5 KB unused behind it. A resident routine used only at boot can move there and leave its resident space free. | `0xFF448C–0xFF44CB` = **64 contiguous bytes**, confirmed (only the init code calls it). More is likely from routines reached only through other boot-only routines. | No features lost. Two call sites in the init code are repointed; one `beq.w` needs re-encoding | best first step |
-| **Move non-real-time resident routines into overlay 3** (menu commands, edit-page handlers), leaving a ~24-byte stub: "load overlay 3, call, reload previous overlay" | KBs | That command gains a short disk read when used (the EPS already does this for its own overlays). Only safe for routines never called while overlay code is running | needs routines mapped to commands |
-| **Remove features you don't use**: replace a resident command handler with "not available" and reuse its bytes | size of the feature | You lose that feature. SCSI is mostly in the boot ROM, so removing it frees little | your call, once commands are named |
-| **Optimise (rewrite routines smaller)**: re-implement a routine in fewer bytes, in place, and use the freed tail | 10–30% of each rewritten routine | Highest risk: every rewrite must behave identically. Don't touch real-time code (voices, MIDI, sequencer clock) | last resort |
-| **Reserve sample RAM** (~1 KB, at boot from the init code) | as much as needed | Must confirm that the 68000 can execute from sample RAM. Costs 1 KB of sample memory (unnoticeable with your 2x expander) | needs a hardware test |
+| MPC60 / MPC3000 | 50–75% | round(48 × % / 100) − 24: 54% → 2, 58% → 4, 62% → 6, 66% → 8, 71% → 10, 75% → 12 | Linn's definition (share of the 8th given to the first 16th). Rounding at 96 PPQN is our assumption |
+| SP-1200 | 50, 54, 58, 63, 67, 71% | 0, 2, 4, 6, 8, 10 (exact) | The labels are (12+k)/24 rounded: one-tick steps at the SP-1200's 48 PPQN |
 
-**Plan:** relocate boot-only code first (safe, no feature loss), then move
-non-real-time command code into overlay 3. Removing features is a fallback,
-and only for features you say you don't use.
+1/8 offsets are twice as large (1/8 at 66% = +15, SP-1200 = 0, 4 … 20).
+`tools/swing.py` is the reference (tested in `tests/test_swing.py`); the
+68000 code will be tested against it. The MPC60 and MPC3000 define swing
+the same way (both Linn designs at 96 PPQN), so they are one style here.
 
-**Fitting the mute groups:** the hook is 108 bytes now and can be tightened
-to ~90 (save only the registers it uses). Then it fits in the 64-byte boot
-cave plus one more small cave, or entirely in the next relocated routine.
+Quantize snaps to the nearest line of the *swung* grid, so a note played
+late on a swung 16th stays on it instead of jumping to the next beat.
+
+**Where it goes:** QUANTIZE TRACK (record `0xFFC4D6`, handler `0xFFED96`,
+overlay 0) already walks the track with a sliding window of grid boundaries
+(ANALYSIS.md → Sequencer). Swing = alternate the boundary step between
+grid + offset and grid − offset, starting from the step parity found when it
+aligns to the grid (`0xFFEE26`). Strength = move each note part of the way.
+Overlay 0 is full, so the new code needs space (see below) and a jump in.
+
+**Steps**
+
+| Step | What | Status |
+|---|---|---|
+| a | Reference math for the three styles | done (`tools/swing.py`) |
+| b | Event format and the quantize loop decoded | partly (ANALYSIS.md → Sequencer) |
+| c | Run the stock QUANTIZE TRACK in the emulator on a test track; compare with `tools/swing.py` at 50% | next |
+| d | Swing patch, style/amount set at build time (`--set`, like mute groups v1); emulator tests per style | |
+| e | Front-panel setting (a second prompt after "QUANTIZE TO 1/") | needs the display routines |
+
+**Target workflow: MPC-style loop recording.** Notes are corrected (quantize
++ swing + strength) as they are recorded, so the next loop pass already plays
+them on the swung grid, and there is no KEEP OLD/NEW prompt. Pieces:
+
+| Piece | What we know | Status |
+|---|---|---|
+| Loop recording | RECORD MODE (`0xFF815F`, ROM descriptor `0xC0247C`) = REPLACE (0) / ADD (1) / **LOOPED** (2); the sequencer branches on it at `0xFF5FD8`, `0xFF6228`, `0xFF6730` … | check whether LOOPED already plays this pass's notes on the next pass |
+| Record-time correction | No record-time quantize in the stock OS. Needs a hook where a recorded note gets its time; snap it with the same math as QUANTIZE TRACK | find the note-record routine; needs the code area (real-time code) |
+| Notes moved later than "now" | Swing delays notes, so a corrected note can land just after the record position | design once the record routine is known |
+| No KEEP prompt | Prompt routine `0xFFA4EC` ("KEEP = OLD NEW", returns d0 = 4 + choice `0xFFC2EC`) is shared with sample edits (overlay 1 calls it). The sequencer's use is `0xFF2702–0xFF2742`, which sets `0xFF815E` = 0 (OLD) / 1 (NEW) | patch only that caller: always NEW, no prompt |
+
+QUANTIZE TRACK with swing (steps c–e) stays useful for fixing a track after
+the fact, and shares the math with the record-time hook.
+
+## Boom-bap plan (agreed order)
+
+Goal: make the EPS feel like an MPC60/SP-1200 for sampling breaks, chopping,
+and loop-recording drums. What the stock OS already has: count-in (SEQ
+COUNTOFF), click, LOOPED record mode, threshold sampling, 20 voices, 8
+instruments with per-key wavesamples.
+
+| # | Feature | Why | Size / where |
+|---|---|---|---|
+| 1 | Mute groups | hats, mono chops | done; set on the EPS per wavesample (the 6 Amp page, WS=ALL for a whole instrument), saved with the instrument (`--pages`, MAME-tested; saving untested) |
+| 2 | MPC-style loop recording: record-time timing correct + MPC60/3000/SP-1200 swing, **per-track swing**, no KEEP prompt, **undo last pass** | the core feel | **Hardware build** (`EPS249_SWING`, `tools/mkswing.py`): QUANTIZE + SWING% on the Seq·Song page, snapping at every loop wrap and at KEEP = NEW, the KEEP prompt kept; MAME-tested on 13-bit sample RAM with ROM 2.40, hardware test next (undo not in it yet). Emulator-only code-area build: no KEEP prompt **done**; swing quantize per instrument **done** (`--swing`, set at build time; MAME-tested); undo **done** (RECORD while loop recording; MAME-tested); QUANTIZE and SWING% on the sequencer page **done** (`--pages`; one setting for all instruments, like the MPC60) |
+| 3 | **Full level** (fixed velocity 127, like the MPC) | today: edit levels/envelopes by hand | **Hardware build** (`EPS249_NEXT`): HIT = FULL LEVEL on the Layer page, per layer, saved with the instrument; MAME-tested (13-bit, ROM 2.40). Emulator-only build: **done**: FULL LEVEL per wavesample on the 6 Amp page (WS=ALL: the instrument), saved with it (`--pages`, MAME-tested) |
+| 4 | **One-shot** (key-up ignored, sample plays through) | today: edit release/sustain by hand | **Hardware build** (`EPS249_NEXT`): HIT = ONE-SHOT on the Layer page (no-loop samples), MAME-tested. Emulator-only build: **done**: ONE-SHOT per wavesample on the 6 Amp page, for no-loop samples (`--pages`, MAME-tested) |
+| 5 | **CHOP** (below) | chopping by hand is tedious | EQUAL with zero-crossing snap done on the swing build (Edit, 8 Wave; `EPS249_NEXT`), **works on hardware** (second test, after the long-sample and prompt fixes); GRID and TRANSIENT later |
+| 6 | **Erase while loop recording** (hold a button + key: that key's notes are erased as the loop passes) | fix takes without stopping | code area; the undo playback skip (`0xFF638A` hook) already drops notes from a take without touching the timing |
+| 7 | Note repeat while recording (held key repeats at the grid, swung) | rolls | code area, sequencer clock |
+| 8 | Sampling crunch: **done**: FILTER CUTOFF up to 25.0 / 33.3 / 50.0 kHz and SP sampling mode (SAMPLE RATE 26.04 kHz picks 20.0), `EPS249_NEXT`, emulator-tested, hardware test next; CRUSH (12-bit / 8-bit, SP-style drop-sample pitching -12..+12 into a new wavesample) **done**, emulator-tested; still to do: S900 filter | tone | overlay 2 (MSB ADJUSTMENT's room) / window |
+
+The code area is 4 KB with mute groups only (about 600 bytes of code); with
+the loop-record code (swing, undo) the image is about 4.5 KB and the area
+grows to 5 KB by itself. The image can grow to 8 KB on disk (the overlay-3
+slot), and the area further (`mkcodearea.py --area`), at the cost of
+sample memory.
+
+### 5. CHOP: automatic non-destructive chopping
+
+**Today, by hand** (the standard EPS/ASR method): COPY WAVESAMPLE with
+"COPY = PARAMETERS ONLY" to another key, set the copy's key range (and root
+key) in the layer, then move its SAMPLE START/END. Repeat per slice. It costs
+almost no memory because every copy plays the same sample data, but it takes
+many button presses per slice.
+
+**Done (swing build, `src/swing/chop.s`):** Edit, 8 Wave, the last entry
+`CHOP=PRESS ENTER`; ENTER, ▲/▼ for 2-32 slices, ENTER. EQUAL slices, cuts
+on the nearest zero crossing, from the wavesample's ROOT KEY up (its lowest
+key if the root isn't one of its keys; C2 at the lowest), through the OS's own COPY WAVESAMPLE (`0xFFA2D6`).
+docs/ANALYSIS.md -> Swing build -> CHOP. Still to do: GRID (tempo + bars,
+for an untrimmed sample), TRANSIENT (at the hits), a FIRST KEY choice.
+
+**The plan** (wavesample command page):
+
+| Parameter | Values |
+|---|---|
+| Slices | 2–32 |
+| Mode | EQUAL (same length), GRID (from tempo + bars, e.g. 16ths of a 2-bar break), later TRANSIENT (at hits) |
+| First key | where slice 1 goes; each next slice on the next key up |
+| Snap | move cut points to the nearest zero crossing (no clicks) |
+
+For each slice it makes a parameters-only copy of the wavesample, gives it a
+one-key range with root key = that key (so it plays at the original pitch),
+and sets start/end to the slice. The original sample data is untouched and
+shared; undo = delete the copies. Implementation plan: call the OS's own
+COPY WAVESAMPLE (parameters only) code (`0xFF4C6E`, docs/COMMANDS.md)
+instead of building wavesample records ourselves, then set the fields. Needs
+the wavesample/layer parameter layout decoded (the same work also gives
+full level and one-shot their per-instrument settings).
+
+## Ideas for later (not scheduled, not being implemented)
+
+### S900 FILTER (render command)
+
+A wavesample edit, like TRUNCATE or NORMALIZE, that bakes an Akai S900/S950
+filter into the sample.
+
+* **S900/S950 filter:** one National MF6CN-50 per voice: 6th-order
+  Butterworth low-pass, switched capacitor, cutoff = clock / 49.1, no
+  resonance, −36 dB/oct. Flat right up to the cutoff, then a hard knee.
+  Static cutoff per keygroup plus keyboard tracking.
+* **EPS playback filter:** inside the sound chip: four one-pole low-pass
+  stages (`y += K·(x − y)`, K1 on poles 1–2, K2 on 3–4; the F1/F2 LP/HP modes
+  regroup them). At most −24 dB/oct with a soft knee, no resonance. Tuned to
+  the same −3 dB point it is −0.8 dB at fc/2 (S900: 0) and −10 dB at 2·fc
+  (S900: −36). The chip can't make the S900 curve in real time.
+* **Plan:** an exact 6-pole Butterworth (three biquads) rendered into the
+  sample, with cutoff as the parameter. Filtering before transposing equals a
+  fully keyboard-tracked filter. Optional: 12-bit reduction and S900 sample
+  rates (7.5–40 kHz) for the whole S900 path. Not modelled: the analog
+  output stage, the BA9221 DAC, switched-capacitor clock noise.
+* **Where:** not real-time code, so overlay 3 (empty, loadable), not the
+  code area.
+* **Hardware curiosity:** the EPS input filter (XR-1008) is also a clocked
+  switched-capacitor filter at 50:1. If its order is close to the MF6's,
+  sampling through it at a set cutoff would be an S900-style filter in
+  hardware. The filter probe disks would show its slope.
+
+### Effects like the EPS-16+ / Waveboy
+
+* **Why the EPS-16+ can:** it has a dedicated 24-bit effects DSP (Ensoniq
+  ES5510 "ESP") in the audio path. Its effects, and Waveboy's (e.g. the
+  Parallel Effects disk), are programs for that chip, loaded as effect files
+  (the EPS-16+ OS disks carry a `PARALLEL EFX` file).
+* **Why the EPS can't run them:** no DSP chip, and the CPU isn't in the audio
+  path (voices go from the sound chip straight to the DACs). The 68000 is
+  also far too slow for real-time audio. Waveboy effects can't run on an EPS
+  in any form, and retrofitting a DSP would be a new hardware board.
+* **What is possible:**
+
+| Idea | How | Cost |
+|---|---|---|
+| Render FX | Offline edits baked into samples: reverb tail, echo/delay, chorus/flanger, drive, bit crush, S900 filter | Static (not per note); sample memory for tails; overlay 3 |
+| Note echo | Re-trigger notes with falling velocity, synced to tempo (a "MIDI delay" in the OS) | Uses voices; real-time, so the code area |
+| Unison / chorus | Extra detuned voices per note | Uses voices (the EPS has 20) |
+| External FX per instrument | The EPS output expander connector (J16 on the schematic) gives separate outputs | Hardware: an output expander |
+
+### Render effects (LAST on the list)
+
+Offline effects baked into a wavesample, as new sample edit commands next to
+TRUNCATE, NORMALIZE, REVERSE. The EPS has no effects chip, so this is how it
+gets EPS-16+-style processing (by resampling, not live). Lowest priority:
+after everything else on this roadmap.
+
+| Phase | Effects | Notes |
+|---|---|---|
+| R1 | Framework: one command page, source range, dry/wet, output to a new wavesample (keep the original) | Shared code for all effects; overlay 3 (non-real-time) |
+| R2 | S900 FILTER (above), bit depth reduction (12/8-bit), sample-rate crunch | Character tools for drums |
+| R3 | Drive / saturation, tape-style soft clip | Cheap per sample |
+| R4 | Echo / delay (tempo-synced, feedback), chorus / flanger | Needs tail length (sample memory) |
+| R5 | Reverb tail (small FDN / Schroeder) | Most CPU per second of audio; slow but fine offline |
+
+The 68000 runs these at a few seconds per sample, which is fine for an edit
+command. Each effect gets an emulator test against a Python reference, like
+`tools/swing.py`.
+
+## Shared blocker: space for new code — solved by the code area
+
+Resident RAM (`0xFF1600–0xFFDFFF`) is full. Our resident code now lives in
+the **top 4 KB of sample RAM**, loaded at boot from the OS file's
+overlay-3 slot (ANALYSIS.md → Code area; `src/loader.s`, `src/codearea.s`,
+`tools/mkcodearea.py`). The image is position independent; its init
+writes the hook jumps for whichever expander is fitted. Cost: 4 KB of sample memory (`--area`). Mute groups use about
+600 bytes of it (352 of them the per-key table).
+
+| Status | |
+|---|---|
+| Emulator | passes for base / 2x / 4x and boot ROM 2.00 / 2.40; OS RAM after boot matches stock except the bounds and hook sites |
+| MAME | test disk boots to the main loop with the hook installed; with the TR 8O8 kit loaded from the panel, mono and per-key groups cut voices as designed (`mame/test_mutegroups.py`) |
+| Hardware | **test 1 pending**: does the 68000 run code from sample RAM? (docs/HARDWARE_TESTS.md) |
+
+**Space: solved with a second stage.** The image lives in the OS file's
+empty overlay-3 slot (8 KB) and a small loader reads it into a 4 KB code
+area at boot (ANALYSIS.md → Code area). Mute groups use about 600 bytes.
+
+Other options measured earlier, kept for reference:
+
+| Approach | Result |
+|---|---|
+| Dead code | ~150 bytes in 7 pieces of 16–30 bytes. Not usable |
+| Move boot-only code into the "boot overlay" | Invalid: there is no boot overlay (file `0x14000` is resident code at `0xFF1600`) |
+| Move non-real-time routines into overlay 3 | Still possible for big non-real-time features (overlay 3's slot is empty and loadable); command records give each command's overlay |
+| Remove features you don't use | Fallback only |
+| Rewrite routines smaller | Last resort |
 
 ### UI descriptors and message numbers
 
-`0xFFC560…` holds command/page records of the form
-`handler, message#, flags, 3 × button handler, 0`, for example
-`7F88 132A 0000 4552 455A 4552 0000`. The OS passes **message numbers**
-(`0x1300–0x1CA7`) to the display routines (e.g. `move.w #0x14EB,a2;
-jsr 0x23FC`). The display text is probably stored in the boot ROM, which
-explains why the OS has almost no ASCII. Two consequences:
-* These records let us list every command and its handler, which is how we
-  pick what to move to overlay 3. Naming them needs the boot ROM text or a
-  hardware run.
-* New screens (mute group, CHOP, swing) need our own text-drawing call or
-  reused ROM messages.
+Solved with the boot ROM (ANALYSIS.md → Boot ROM). Message numbers are ROM
+offsets of tokenised strings, and the 71 command records at
+`0xFFC43C–0xFFC81D` are all named in docs/COMMANDS.md. Each record's flags
+give its overlay (`0x8…` = 0, `0x9…` = 1, `0xA…` = 2). Consequences:
+* We can now pick commands to move into overlay 3. If the dispatcher accepts
+  flags `0xB…`, a command moves by copying its handler to overlay 3 and
+  changing one flags word. Next step: find the dispatcher.
+* New screens (mute group, CHOP, swing) can reuse ROM messages (e.g.
+  "OFF", digits). Brand-new words need our own text-drawing call.
 
 ### Debug channel: MIDI out
 
@@ -131,16 +331,31 @@ expanded unit.
 | M0 | Installer unpacked, EDE ⇄ IMG, OS extract/replace, patch tool, disassembly | **done** |
 | M1 | Memory layout: resident part, overlays, stack, voice engine | **done** (see ANALYSIS.md) |
 | M2 | MIDI-out debug patch on hardware: dump sample bounds and memory size from an expanded EPS | next |
-| M2b | Code location for resident hooks (sample RAM reservation or a freed routine) | |
-| M3 | Mute groups v1 (groups set at build time) on hardware | hook written |
-| M4 | Display/parameter system decoded; mute group editable from the panel | |
-| M5 | Filter probe on hardware → filter OUT | probe disks ready |
-| M6 | Quantize + swing at record time; TIMING CORRECT | |
+| M2b | Code location for resident hooks | code area in sample RAM; emulator- and MAME-tested, hardware test 1 |
+| M2c | Second-stage loader (code from disk blocks, bigger code area) | **done**: image in the overlay-3 slot, 4 KB area; emulator- and MAME-tested |
+| M3 | Mute groups v1 (groups set at build time) on hardware | passes in MAME with a real kit; test disk ready (hardware test 1) |
+| M4 | Display/parameter system decoded; mute group editable from the panel | messages + commands decoded from the boot ROM |
+| M5 | Filter probe on hardware → filter OUT | try stock 20.0 KHZ first; 16 probe disks ready |
+| M6 | MPC/SP-1200 swing in QUANTIZE TRACK | reference math done; quantize loop being decoded |
 | M7 | Mute group saved with the instrument | |
 
 ## Testing
 
-There is no working emulator (MAME's EPS driver doesn't boot), so each step
-needs a hardware test. The fastest loop is a Gotek with FlashFloppy:
-`epstool.py replace stock.ede 0 patched.bin test.img`, copy it to USB, and
-power-cycle. A bad OS just fails to boot; the stock disk always recovers.
+Three levels:
+1. **Unicorn** (`tests/`): routines against real OS and ROM code, in
+   milliseconds.
+2. **MAME** (`mame/`, docs/MAME.md): the whole machine boots our disk images.
+   Stock MAME's EPS driver doesn't boot; `mame/eps.patch` fixes the floppy
+   wiring, supervisor writes and the panel handshake. Use it before every
+   hardware test.
+3. **Hardware**: a Gotek with the `.hfe` (docs/HARDWARE_TESTS.md). A bad OS
+   just fails to boot; the stock disk always recovers.
+
+Before hardware, `python3 -m unittest discover tests` runs our code against
+real OS routines in a 68000 emulator (`tools/emu.py`, ANALYSIS.md → Emulator
+tests). It catches register and logic bugs, not timing or hardware ones.
+
+A full MAME setup would also test booting, overlays and the panel. That means
+building MAME's `esq5505` driver and finding why the EPS doesn't boot there
+(it's marked not working). Worth doing once the two features are on
+hardware, or in parallel.

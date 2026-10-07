@@ -1,0 +1,19 @@
+# Panel script (ESQPANEL_KEYS) for a disk with an instrument as file 1:
+# load it into instrument 1, select instrument 1, play three overlapping notes.
+# Lines: SECONDS BYTES (hex). Button: code|80 00 = press, code 00 = release.
+# Key: code|80 vel = note on (note = code + 36), code vel = note off (vel
+# must be non-zero: "code 00" is a button release).
+10.5  8f 00      # LOAD (15)
+10.65 0f 00
+11.5  a3 00      # ENTER (35): "PICK INSTRUMENT BUTTON"
+11.65 23 00
+12.5  82 00      # instrument 1 (2): loads (about 15 s for 472 blocks)
+12.65 02 00
+29.0  82 00      # instrument 1 again: select it for the keyboard
+29.15 02 00
+30.0  80 60      # C2 (36)
+30.3  84 60      # E2 (40)
+30.6  87 60      # G2 (43)
+31.2  00 40
+31.2  04 40
+31.2  07 40

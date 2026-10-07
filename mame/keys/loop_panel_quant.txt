@@ -1,0 +1,60 @@
+# loop_record.txt with QUANTIZE set from the panel before loop recording
+# (--pages, no --swing: QUANTIZE starts OFF): EDIT, Seq·Song, previous
+# parameter twice (SWING%, then QUANTIZE), up 5 times: OFF -> 1/16.
+# Buttons: docs/MAME.md (EDIT 5, Seq·Song 21, previous parameter 16, up 10).
+10.5 8f 00    # LOAD
+10.65 0f 00
+11.5 a3 00    # ENTER
+11.65 23 00
+12.5 82 00    # instrument 1: load TR 8O8
+12.65 02 00
+29.0 82 00    # select instrument 1
+29.15 02 00
+30.0 83 00    # hold RECORD
+30.2 9d 00    # + PLAY: record a new sequence
+30.35 1d 00
+30.5 03 00
+31.0 80 40    # C2 (kick)
+31.1 00 40
+33.0 97 00    # STOP: "001 BARS - KEEP TRACK?"
+33.15 17 00
+34.0 a3 00    # ENTER: keep (1 bar)
+34.15 23 00
+34.4 85 00    # EDIT
+34.5 05 00
+34.6 95 00    # Seq·Song
+34.7 15 00
+34.8 90 00    # previous: SWING%
+34.9 10 00
+35.0 90 00    # previous: QUANTIZE
+35.1 10 00
+35.20 8a 00    # up
+35.27 0a 00
+35.34 8a 00    # up
+35.41 0a 00
+35.48 8a 00    # up
+35.55 0a 00
+35.62 8a 00    # up
+35.69 0a 00
+35.76 8a 00    # up
+35.83 0a 00
+37.0 83 00    # hold RECORD (mame/loop.lua set LOOPED at 36 s)
+37.2 9d 00    # + PLAY: loop recording
+37.35 1d 00
+37.5 03 00
+38.0 82 60    # D2 (snare)
+38.1 02 40
+39.3 87 60    # G2 (open hat)
+39.4 07 40
+40.6 82 60    # D2, next pass
+40.7 02 40
+42.0 87 60    # G2, next pass
+42.1 07 40
+44.82 82 60      # D2 in the last, unfinished pass (only STOP quantizes it)
+44.92 02 40
+45.0 97 00    # STOP: stock asks KEEP = OLD NEW here
+45.15 17 00
+47.0 9d 00    # PLAY: play the sequence back
+47.15 1d 00
+52.0 97 00    # STOP
+52.15 17 00

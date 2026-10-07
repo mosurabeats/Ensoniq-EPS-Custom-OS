@@ -1,0 +1,26 @@
+# CHOP of a wavesample longer than 65535 samples (the first hardware test's
+# bug): LIVE KIT (loaded as file 1), wavesample 9 (66196 samples, key D#2
+# = 39, ROOT KEY 38: not one of its keys, so the slices start at 39):
+# Edit, ► to WS, D#2, 8 Wave, ◄ = CHOP, ENTER, ENTER: 16 slices.
+13.5 8f 00    # Load
+13.65 0f 00
+14.5 a3 00    # Enter·Yes
+14.65 23 00
+15.5 82 00    # instrument 1: load LIVE KIT
+15.65 02 00
+42.0 82 00    # select instrument 1
+42.15 02 00
+43.0 85 00    # Edit
+43.15 05 00
+43.5 91 00    # ►: the WS field
+43.65 11 00
+44.0 83 40    # D#2: wavesample 9
+44.1 03 40
+44.5 a4 00    # 8 Wave
+44.65 24 00
+45.0 90 00    # ◄: CHOP
+45.15 10 00
+46.0 a3 00    # ENTER: CHOP INTO 16 SLICES?
+46.15 23 00
+48.0 a3 00    # ENTER: chop
+48.15 23 00

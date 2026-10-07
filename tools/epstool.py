@@ -3,12 +3,21 @@
 
 Subcommands
   ede2img  IN.ede OUT.img            Expand a Giebler .EDE image to a raw 800K .img
+  hfe2img  IN.hfe OUT.img            Decode an HxC .hfe (Gotek/HxC) image to .img
+                                     (ls/extract/replace also take .hfe; replace
+                                     writes .hfe using the input .hfe's tracks)
   img2ede  IN.img OUT.ede [--template T.ede]
                                      Compress a raw .img back to .EDE
   ls       IMAGE                     List the root directory of an .img/.ede
   extract  IMAGE INDEX OUT.bin       Extract directory entry INDEX to a file
   replace  IMAGE INDEX NEW.bin OUT   Replace file INDEX with NEW.bin (may grow
                                      into free blocks directly after it)
+  add      IMAGE SRC INDEX OUT       Copy file INDEX of disk SRC (e.g. an
+                                     instrument) onto IMAGE, write OUT
+  groups   IMAGE INDEX [SPEC OUT]  List an instrument's wavesamples (keys, name,
+                                     mute group), or set mute groups in it:
+                                     SPEC "C2=1,G2-A#2=2" by key, or "ALL=3"
+                                     (tools/instfile.py; --pages OSes use them)
   patch    OS.bin PATCH.json OUT.bin Apply a verified byte patch to an OS file
   info     OS.bin                    Summarise an OS file
 
@@ -32,14 +41,26 @@ FAT_START = 5           # FAT: 3-byte big-endian entries, 170 per block
 FAT_PER_BLOCK = 170
 FAT_EOF = 1
 
-# OS file layout (see docs/ANALYSIS.md): file 0x0000-0xBFFF is resident at
-# 0xFF2000-0xFFDFFF; the rest is 8 KB overlays that the OS reads from the OS
-# disk into the window at 0xFFE000-0xFFFFFF on demand (overlay 0 at 0xC000).
+# OS file layout (see docs/ANALYSIS.md): resident code per LOAD_MAP below;
+# file 0xC000-0x13FFF is overlays 0-3, 8 KB each, which the OS reads from the
+# OS disk into the window at 0xFFE000-0xFFFFFF on demand (overlay 0 is there
+# at boot, overlay 3 is empty).
 OS_LOAD_ADDR = 0xFF2000
 RESIDENT_END = 0xFFE000
 OVERLAY_WINDOW = 0xFFE000
 OVERLAY_FILE_BASE = 0xC000
 OVERLAY_SIZE = 0x2000
+
+
+# Where the boot ROM puts each part of the OS file (ROM 0xC0C046; see
+# docs/ANALYSIS.md -> Boot). RAM 0xFF2000-0xFF21FF comes from the low chunk,
+# not from file 0x0000 (that block holds the exception vectors).
+LOAD_MAP = [  # (RAM start, RAM end, file offset)
+    (0xFF0000, 0xFF0200, 0x00000),     # vectors
+    (0xFF0732, 0xFF0932, 0x14C00),     # disk/OS info block
+    (0xFF1600, 0xFF2200, 0x14000),     # OS entry 0xFF171E, low code, variables
+    (0xFF2200, 0xFFE000, 0x00200),     # resident OS
+]
 
 
 def addr_to_offset(addr, overlay=None):
@@ -48,9 +69,10 @@ def addr_to_offset(addr, overlay=None):
         if not OVERLAY_WINDOW <= addr < OVERLAY_WINDOW + OVERLAY_SIZE:
             sys.exit(f"{addr:#x} is outside the overlay window")
         return OVERLAY_FILE_BASE + overlay * OVERLAY_SIZE + addr - OVERLAY_WINDOW
-    if not OS_LOAD_ADDR <= addr < RESIDENT_END:
-        sys.exit(f"{addr:#x} is not resident; give \"overlay\" for 0xFFE000+")
-    return addr - OS_LOAD_ADDR
+    for lo, hi, off in LOAD_MAP:
+        if lo <= addr < hi:
+            return off + addr - lo
+    sys.exit(f"{addr:#x} is not loaded from the OS file; give \"overlay\" for 0xFFE000+")
 
 FILE_TYPES = {1: "OS", 2: "DIR", 3: "INST", 4: "BANK", 5: "SEQ", 6: "SONG",
               7: "SYSEX", 8: "PARENT", 9: "MACRO"}
@@ -93,17 +115,141 @@ def ede_encode(img, template=None):
     return bytes(header) + bytes(body) + b"\x00"
 
 
+# ---------------------------------------------------------------- HFE reader
+# HxC .hfe v1: 512-byte header, track table at block hdr[18], each track is
+# interleaved 256-byte chunks of side 0 / side 1, MFM bits LSB first. We find
+# IBM sync marks (0x4489), read IDAM + data fields and check both CRCs.
+
+def _crc16(data, crc=0xFFFF):
+    for b in data:
+        crc ^= b << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else crc << 1
+    return crc
+
+
+def _mfm_sectors(raw):
+    """Yield (sector, mark, data, bit position of the first data byte)."""
+    bits = "".join(format(b, "08b")[::-1] for b in raw)
+    bits += bits[:8192]                       # a sector may wrap the index
+    sync = "0100010010001001" * 3
+
+    def read(pos, n):
+        return bytes(int(bits[pos + 16 * i + 1:pos + 16 * i + 16:2], 2)
+                     for i in range(n))
+
+    idam = None
+    pos = bits.find(sync)
+    while pos != -1 and pos + 48 + 16 * 515 <= len(bits):
+        p = pos + 48
+        mark = read(p, 1)[0]
+        if mark == 0xFE:
+            hdr = read(p, 7)
+            idam = hdr[1:5] if _crc16(b"\xA1\xA1\xA1" + hdr) == 0 else None
+        elif mark in (0xFB, 0xF8) and idam:
+            size = 128 << idam[3]
+            data = read(p, 3 + size)
+            if _crc16(b"\xA1\xA1\xA1" + data) == 0:
+                yield idam[2], mark, data[1:1 + size], p + 16
+            idam = None
+        pos = bits.find(sync, pos + 48)
+
+
+def _hfe_tracks(hfe):
+    """Yield (track, offset, length, [side0, side1]) of an HFE v1 image."""
+    if hfe[:8] != b"HXCPICFE":
+        sys.exit("not an HFE v1 image")
+    lut = int.from_bytes(hfe[18:20], "little") * 512
+    for t in range(hfe[9]):
+        off = int.from_bytes(hfe[lut + 4 * t:lut + 4 * t + 2], "little") * 512
+        length = int.from_bytes(hfe[lut + 4 * t + 2:lut + 4 * t + 4], "little")
+        sides = [bytearray(), bytearray()]
+        for i in range(0, length, 512):
+            n = min(256, (length - i) // 2)
+            sides[0] += hfe[off + i:off + i + n]
+            sides[1] += hfe[off + i + 256:off + i + 256 + n]
+        yield t, off, length, sides
+
+
+def _block_of(t, s, r):
+    return (t * 2 + s) * 10 + r
+
+
+def hfe_decode(hfe):
+    secs = {}
+    for t, _, _, sides in _hfe_tracks(hfe):
+        for s in range(hfe[10]):
+            for r, _, data, _ in _mfm_sectors(sides[s]):
+                secs.setdefault((t, s, r), data)
+    img = bytearray()
+    for b in range(NBLOCKS):
+        key = (b // 20, b // 10 % 2, b % 10)
+        if key not in secs:
+            sys.exit(f"HFE: block {b} (cyl {key[0]} head {key[1]} sec {key[2]}) "
+                     "missing or bad CRC")
+        img += secs[key]
+    return bytes(img)
+
+
+def hfe_encode(img, template):
+    """New .hfe = template with every sector whose data differs from img
+    re-encoded in place (MFM data + CRC). Gaps, IDs and timing stay as in
+    the template, so the result looks like a real EPS disk to the drive."""
+    out = bytearray(template)
+    for t, off, length, sides in _hfe_tracks(template):
+        for s in range(template[10]):
+            raw = sides[s]
+            nbits = len(raw) * 8
+            bits = bytearray((byte >> k) & 1 for byte in raw for k in range(8))
+            changed = False
+            for r, mark, data, pos in _mfm_sectors(raw):
+                new = img[_block_of(t, s, r) * BLOCK:(_block_of(t, s, r) + 1) * BLOCK]
+                if new == data:
+                    continue
+                crc = _crc16(b"\xA1\xA1\xA1" + bytes([mark]) + new)
+                prev = mark & 1
+                for byte in new + crc.to_bytes(2, "big"):
+                    for k in range(7, -1, -1):
+                        bit = (byte >> k) & 1
+                        bits[pos % nbits] = int(prev == 0 and bit == 0)   # clock
+                        bits[(pos + 1) % nbits] = bit
+                        prev = bit
+                        pos += 2
+                nxt = bits[(pos + 1) % nbits]                 # first gap bit's clock
+                bits[pos % nbits] = int(prev == 0 and nxt == 0)
+                changed = True
+            if not changed:
+                continue
+            raw = bytes(sum(bits[i * 8 + k] << k for k in range(8)) for i in range(len(raw)))
+            for i in range(0, length, 512):
+                n = min(256, (length - i) // 2)
+                j = i // 2
+                out[off + i + 256 * s:off + i + 256 * s + n] = raw[j:j + n]
+    return bytes(out)
+
+
 def load_image(path):
     data = open(path, "rb").read()
     if path.lower().endswith(".ede"):
         return bytearray(ede_decode(data))
+    if path.lower().endswith(".hfe"):
+        return bytearray(hfe_decode(data))
+    if data[:5] == b"TDDFI" and len(data) > NBLOCKS * BLOCK:
+        data = data[-NBLOCKS * BLOCK:]          # Gotek .gkh: header + raw image
     if len(data) != NBLOCKS * BLOCK:
         sys.exit(f"{path}: expected {NBLOCKS * BLOCK} bytes, got {len(data)}")
     return bytearray(data)
 
 
 def save_image(img, path, template=None):
+    if path.lower().endswith(".hfe"):
+        if template is None or template[:8] != b"HXCPICFE":
+            sys.exit("writing .hfe needs an .hfe template (the stock disk)")
+        open(path, "wb").write(hfe_encode(img, template))
+        return
     if path.lower().endswith(".ede"):
+        if template is not None and template[:8] == b"HXCPICFE":
+            template = None
         open(path, "wb").write(ede_encode(img, template))
     else:
         open(path, "wb").write(img)
@@ -195,6 +341,39 @@ def replace_file(img, index, data):
     img[2 * BLOCK:2 * BLOCK + 4] = fc.to_bytes(4, "big")
 
 
+def add_file(img, src_img, src_index):
+    """Copy file src_index of src_img into a free directory slot of img,
+    in the first run of free blocks big enough (contiguous), keeping the
+    source's directory entry fields. Returns the new entry's index."""
+    e = get_entry(src_img, src_index)
+    data = read_file(src_img, e)
+    need = e["blocks"]
+    raw = DIR_BLOCKS[0] * BLOCK
+    slot = next((i for i in range(39) if img[raw + i * DIR_ENTRY + 1] == 0), None)
+    if slot is None:
+        sys.exit("directory full")
+    start, run = None, 0
+    for b in range(NBLOCKS):
+        run = run + 1 if fat_get(img, b) == 0 else 0
+        if run == need:
+            start = b - need + 1
+            break
+    if start is None:
+        sys.exit(f"no {need} contiguous free blocks")
+    data = data + FILL[:need * BLOCK - len(data)]
+    for i in range(need):
+        b = start + i
+        img[b * BLOCK:(b + 1) * BLOCK] = data[i * BLOCK:(i + 1) * BLOCK]
+        fat_set(img, b, b + 1 if i < need - 1 else FAT_EOF)
+    o = raw + slot * DIR_ENTRY
+    img[o:o + DIR_ENTRY] = src_img[e["raw_off"]:e["raw_off"] + DIR_ENTRY]
+    img[o + 16:o + 18] = need.to_bytes(2, "big")
+    img[o + 18:o + 22] = start.to_bytes(4, "big")
+    fc = free_count(img) - need
+    img[2 * BLOCK:2 * BLOCK + 4] = fc.to_bytes(4, "big")
+    return slot
+
+
 # ------------------------------------------------------------------ patches
 
 def apply_patch(os_bin, patch):
@@ -229,6 +408,7 @@ def main():
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = p.add_subparsers(dest="cmd", required=True)
     a = sp.add_parser("ede2img"); a.add_argument("src"); a.add_argument("dst")
+    a = sp.add_parser("hfe2img"); a.add_argument("src"); a.add_argument("dst")
     a = sp.add_parser("img2ede"); a.add_argument("src"); a.add_argument("dst")
     a.add_argument("--template")
     a = sp.add_parser("ls"); a.add_argument("image")
@@ -236,6 +416,10 @@ def main():
     a.add_argument("dst")
     a = sp.add_parser("replace"); a.add_argument("image"); a.add_argument("index", type=int)
     a.add_argument("src"); a.add_argument("dst")
+    a = sp.add_parser("add"); a.add_argument("image"); a.add_argument("src")
+    a.add_argument("index", type=int); a.add_argument("dst")
+    a = sp.add_parser("groups"); a.add_argument("image"); a.add_argument("index", type=int)
+    a.add_argument("spec", nargs="?"); a.add_argument("dst", nargs="?")
     a = sp.add_parser("patch"); a.add_argument("os"); a.add_argument("patch")
     a.add_argument("dst")
     a = sp.add_parser("info"); a.add_argument("os")
@@ -243,6 +427,8 @@ def main():
 
     if args.cmd == "ede2img":
         open(args.dst, "wb").write(ede_decode(open(args.src, "rb").read()))
+    elif args.cmd == "hfe2img":
+        open(args.dst, "wb").write(hfe_decode(open(args.src, "rb").read()))
     elif args.cmd == "img2ede":
         tpl = open(args.template, "rb").read() if args.template else None
         open(args.dst, "wb").write(ede_encode(open(args.src, "rb").read(), tpl))
@@ -260,8 +446,33 @@ def main():
     elif args.cmd == "replace":
         img = load_image(args.image)
         replace_file(img, args.index, open(args.src, "rb").read())
-        tpl = open(args.image, "rb").read() if args.image.lower().endswith(".ede") else None
+        tpl = open(args.image, "rb").read()   # .ede header / .hfe track layout
         save_image(img, args.dst, tpl)
+    elif args.cmd == "add":
+        img = load_image(args.image)
+        slot = add_file(img, load_image(args.src), args.index)
+        save_image(img, args.dst, open(args.image, "rb").read())
+        print(f"{args.dst}: added as entry {slot}, {free_count(img)} blocks free")
+    elif args.cmd == "groups":
+        import instfile
+        img = load_image(args.image)
+        data = read_file(img, get_entry(img, args.index))
+        if args.spec:
+            if not args.dst:
+                sys.exit("groups: SPEC needs an output image")
+            data, set_ = instfile.set_groups(data, args.spec)
+            replace_file(img, args.index, bytes(data))
+            save_image(img, args.dst, open(args.image, "rb").read())
+            print(f"{args.dst}: groups set on wavesamples {sorted(set_)}")
+        ranges, wss = instfile.key_ranges(data), instfile.wavesamples(data)
+        names = {0: ""}
+        for w, o in wss.items():
+            lo, hi = ranges.get(w, (None, None))
+            keys = f"{lo}-{hi}" if lo is not None else "-"
+            print(f"  WS {w:3d}  keys {keys:8s} {instfile.ws_name(data, o)!r:16s} "
+                  f"group {data[o + instfile.WS_GROUP]}"
+                  + ("  FULL LEVEL" if data[o + instfile.WS_FULL] else "")
+                  + ("  ONE-SHOT" if data[o + instfile.WS_ONESHOT] else ""))
     elif args.cmd == "patch":
         patch = json.load(open(args.patch))
         out = apply_patch(open(args.os, "rb").read(), patch)
@@ -270,9 +481,9 @@ def main():
     elif args.cmd == "info":
         d = open(args.os, "rb").read()
         print(f"size {len(d)} bytes ({(len(d) + 511) // 512} blocks)")
-        print(f"resident  file 0x0000-{OVERLAY_FILE_BASE - 1:#06x} -> "
-              f"{OS_LOAD_ADDR:#x}-{RESIDENT_END - 1:#x}")
-        for n, off in enumerate(range(OVERLAY_FILE_BASE, len(d), OVERLAY_SIZE)):
+        for lo, hi, off in LOAD_MAP:
+            print(f"file {off:#07x}-{off + hi - lo - 1:#07x} -> {lo:#x}-{hi - 1:#x}")
+        for n, off in enumerate(range(OVERLAY_FILE_BASE, 0x14000, OVERLAY_SIZE)):
             chunk = d[off:off + OVERLAY_SIZE]
             state = "empty (6DB6 fill)" if chunk == FILL[:2] * (len(chunk) // 2) else \
                 f"{len(chunk)} bytes"

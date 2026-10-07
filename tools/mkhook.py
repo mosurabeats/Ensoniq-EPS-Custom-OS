@@ -26,6 +26,34 @@ def run(*cmd):
     subprocess.run(cmd, check=True)
 
 
+def assemble(src, org, entry, defsyms=None):
+    """Assemble src linked at org. Returns (code bytearray, {symbol: address}).
+    defsyms: {name: int} passed to the assembler as --defsym."""
+    with tempfile.TemporaryDirectory() as t:
+        obj, elf, binf = (os.path.join(t, n) for n in ("h.o", "h.elf", "h.bin"))
+        defs = [f"--defsym={k}={v}" for k, v in (defsyms or {}).items()]
+        run("m68k-linux-gnu-as", "-m68000", "--register-prefix-optional", *defs,
+            "-I", os.path.dirname(os.path.abspath(src)), "-o", obj, src)
+        run("m68k-linux-gnu-ld", "-e", entry, f"-Ttext={org:#x}", "-o", elf, obj)
+        run("m68k-linux-gnu-objcopy", "-O", "binary", elf, binf)
+        syms = {}
+        for line in subprocess.run(["m68k-linux-gnu-nm", elf], capture_output=True,
+                                   text=True, check=True).stdout.splitlines():
+            parts = line.split()
+            if len(parts) == 3:                 # skip undefined ("U name")
+                syms[parts[2]] = int(parts[0], 16)
+        with open(binf, "rb") as f:
+            return bytearray(f.read()), syms
+
+
+def hook_jsr(target, length):
+    """'jsr target.l' padded with nops to length bytes."""
+    if length < 6 or length % 2:
+        raise ValueError("hook length must be even and >= 6")
+    return bytes.fromhex("4EB9") + target.to_bytes(4, "big") + \
+        bytes.fromhex("4E71") * ((length - 6) // 2)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("src")
@@ -41,17 +69,7 @@ def main():
     org, hook = int(a.org, 16), int(a.hook, 16)
     if a.len < 6 or a.len % 2:
         sys.exit("--len must be even and >= 6")
-    with tempfile.TemporaryDirectory() as t:
-        obj, elf, binf = (os.path.join(t, n) for n in ("h.o", "h.elf", "h.bin"))
-        run("m68k-linux-gnu-as", "-m68000", "--register-prefix-optional", "-o", obj, a.src)
-        run("m68k-linux-gnu-ld", "-e", a.entry, f"-Ttext={org:#x}", "-o", elf, obj)
-        run("m68k-linux-gnu-objcopy", "-O", "binary", elf, binf)
-        syms = {}
-        for line in subprocess.run(["m68k-linux-gnu-nm", elf], capture_output=True,
-                                   text=True, check=True).stdout.splitlines():
-            v, _, name = line.split()
-            syms[name] = int(v, 16)
-        code = bytearray(open(binf, "rb").read())
+    code, syms = assemble(a.src, org, a.entry)
 
     for s in a.set:
         name, hexval = s.split("=")
@@ -65,8 +83,7 @@ def main():
         off = epstool.addr_to_offset(addr)
         return osb[off:off + n].hex()
 
-    jsr = bytes.fromhex("4EB9") + syms[a.entry].to_bytes(4, "big")
-    jsr += bytes.fromhex("4E71") * ((a.len - 6) // 2)
+    jsr = hook_jsr(syms[a.entry], a.len)
     patch = {
         "name": os.path.splitext(os.path.basename(a.src))[0],
         "edits": [
